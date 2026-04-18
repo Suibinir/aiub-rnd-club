@@ -26,11 +26,32 @@ function getEvents(){ return getGlobalEvents(); }
 // =============================================
 // INIT
 // =============================================
-document.addEventListener("DOMContentLoaded", ()=>{
-  setupUser(); setupDateTime(); setupNavigation(); setupTheme();
-  renderHome(); renderAttendance(); renderEvents(); renderNotices();
-  renderLeaderboard(); renderProfile(); renderResearch();
-  if(isAdmin) renderAdmin();
+// =============================================
+// INIT — Now with Cloud Power!
+// =============================================
+document.addEventListener("DOMContentLoaded", async () => { // Added 'async'
+  setupUser(); 
+  setupDateTime(); 
+  setupNavigation(); 
+  setupTheme();
+  
+  // 1. Load data that doesn't change much
+  renderHome(); 
+  renderAttendance(); 
+  renderEvents(); 
+  renderNotices();
+  renderProfile(); 
+  renderResearch();
+  
+  // 2. Fetch the LIVE members and leaderboard from the Cloud
+  console.log("Fetching live data from Cloud...");
+  await renderLeaderboard(); 
+  
+  if(isAdmin) {
+    await renderAdmin();
+  }
+  
+  console.log("Dashboard fully synced with Firebase!");
 });
 
 // =============================================
