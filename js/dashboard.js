@@ -386,34 +386,32 @@ function deleteNotice(id){
 // =============================================
 // LEADERBOARD
 // =============================================
-async function renderLeaderboard() { // Added async
+async function renderLeaderboard() {
   const list = document.getElementById("leaderboardList"); 
   if (!list) return;
 
   try {
-    // 1. Fetch all members from the 'leaderboard' collection in the cloud
     const snapshot = await db.collection("leaderboard").get();
     const lbData = [];
     snapshot.forEach(doc => lbData.push(doc.data()));
 
-    // 2. Sort by points (highest to lowest)
-    lbData.sort((a, b) => b.points - a.points);
+    // Sort by points highest to lowest
+    lbData.sort((a, b) => (b.points || 0) - (a.points || 0));
 
-    // 3. Generate the HTML
     list.innerHTML = lbData.map((e, idx) => {
       const rank = idx + 1, isYou = e.id === uid;
       const rc = rank === 1 ? "gold" : rank === 2 ? "silver" : rank === 3 ? "bronze" : "";
       
       return `<div class="lb-item ${isYou ? "lb-you" : ""}">
         <span class="lb-rank ${rc}">${rank}</span>
-        <div class="lb-avatar" style="background:${e.bgColor || '#cfe2ff'};color:${e.txtColor || '#0a3980'}">${e.initials}</div>
+        <div class="lb-avatar" style="background:${e.bgColor || '#cfe2ff'};color:${e.txtColor || '#0a3980'}">${e.initials || '??'}</div>
         <div class="lb-name">${e.name}${isYou ? ` <span class="you-tag">You</span>` : ""}</div>
         <span class="lb-badges">${e.badges || 0} badge${e.badges !== 1 ? "s" : ""}</span>
         <div class="lb-score">${e.points || 0} pts</div>
       </div>`;
     }).join("");
-  } catch (error) {
-    console.error("Leaderboard Load Error:", error);
+  } catch (err) {
+    console.error("Error loading leaderboard:", err);
   }
 }
 
@@ -733,31 +731,35 @@ async function renderAdmin() {
   const container = document.getElementById("adminMembersList");
   if (!container) return;
 
-  // 1. Get the latest data from the Cloud
-  const snapshot = await db.collection("members").get();
-  const cloudMembers = [];
-  snapshot.forEach(doc => cloudMembers.push(doc.data()));
+  try {
+    // 1. Fetch from Firestore
+    const snapshot = await db.collection("members").get();
+    const cloudMembers = [];
+    snapshot.forEach(doc => cloudMembers.push(doc.data()));
 
-  // 2. Clear the list and draw the members
-  container.innerHTML = "";
-  cloudMembers.forEach(m => {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>
-        <div class="user-info">
-          <div class="user-avatar" style="background:#cfe2ff;color:#0a3980">${m.initials}</div>
-          <div>
-            <div class="user-name">${m.name}</div>
-            <div class="user-id">${m.id}</div>
+    // 2. Clear and Draw
+    container.innerHTML = "";
+    cloudMembers.forEach(m => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>
+          <div class="user-info">
+            <div class="user-avatar" style="background:#cfe2ff;color:#0a3980">${m.initials || '??'}</div>
+            <div>
+              <div class="user-name">${m.name}</div>
+              <div class="user-id">${m.id}</div>
+            </div>
           </div>
-        </div>
-      </td>
-      <td>${m.dept}</td>
-      <td><span class="badge badge-success">${m.status}</span></td>
-      <td><button class="btn-outline" onclick="alert('Profile of ${m.name}')">View</button></td>
-    `;
-    container.appendChild(tr);
-  });
+        </td>
+        <td>${m.dept || 'N/A'}</td>
+        <td><span class="badge badge-success">${m.status || 'active'}</span></td>
+        <td><button class="btn-outline" onclick="alert('Profile of ${m.name}')">View</button></td>
+      `;
+      container.appendChild(tr);
+    });
+  } catch (err) {
+    console.error("Error loading members:", err);
+  }
 }
 function renderMemberTable(){
   const tbody=document.getElementById("adminMemberTbody"); if(!tbody) return;
