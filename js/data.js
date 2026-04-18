@@ -21,12 +21,12 @@ function getAllMembers() {
 }
 function saveAllMembers(m) { localStorage.setItem("uniclub_members", JSON.stringify(m)); }
 // Change 'newMember' to 'm' or vice-versa to stay consistent
-async function addMember(m) {
+async function addMember(m) { // 1. Added 'async'
   try {
-    // Saves the member to the cloud
+    // 2. Added 'await' here so it waits for the upload
     await db.collection("members").doc(m.id).set(m);
     
-    // Updates the leaderboard in the cloud
+    // 3. Added 'await' here too
     await db.collection("leaderboard").doc(m.id).set({
       id: m.id,
       name: m.name,
@@ -34,9 +34,12 @@ async function addMember(m) {
       points: 0,
       rank: 99
     });
+
+    console.log("Success! Member is in the cloud.");
     return true;
   } catch (error) {
     console.error("Firebase Error:", error);
+    alert("Cloud save failed: " + error.message);
     return false;
   }
 }
