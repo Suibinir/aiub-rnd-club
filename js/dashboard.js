@@ -760,8 +760,11 @@ function deleteSeminar(id){ if(!confirm("Delete this seminar record?")) return; 
 // =============================================
 // ADMIN
 // =============================================
+// =============================================
+// ADMIN
+// =============================================
 async function renderAdmin() {
-  // 1. Identify the container (matches ID in dashboard.html)
+  // Identify the container (matches ID in dashboard.html)
   const container = document.getElementById("adminMemberTbody"); 
   
   if (!container) {
@@ -770,15 +773,15 @@ async function renderAdmin() {
   }
 
   try {
-    // 2. Fetch the latest members from Cloud
+    // Fetch the latest members from Cloud
     const snapshot = await db.collection("members").get();
     const cloudMembers = [];
     snapshot.forEach(doc => cloudMembers.push(doc.data()));
 
-    // 3. Clear the "Loading..." or old rows
+    // Clear the "Loading..." or old rows
     container.innerHTML = "";
 
-    // 4. Loop and Create Rows
+    // Loop and Create Rows
     cloudMembers.forEach(m => {
       const tr = document.createElement("tr");
       tr.innerHTML = `
@@ -801,7 +804,7 @@ async function renderAdmin() {
   } catch (err) {
     console.error("Cloud Fetch Error:", err);
   }
-} // <--- THIS is where the function should end
+} // Function now correctly closes here
 
 async function handleRemoveMember(memberId) {
   if (confirm("Are you sure you want to remove this member from the Cloud?")) {
@@ -1011,7 +1014,12 @@ function checkBadge(id,condition){
 // HELPERS
 // =============================================
 function downloadFile(content,mime,filename){ const blob=new Blob([content],{type:mime}); const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); }
-function logout(){ if(confirm("Log out?")){ clearSession(); window.location.href="index.html"; } }
+function logout(){ 
+  if(confirm("Log out?")){ 
+    clearSession(); 
+    window.location.href="index.html"; 
+  } 
+}
 function showToast(msg,type="success"){
   const old=document.getElementById("toastMsg"); if(old) old.remove();
   const t=document.createElement("div"); t.id="toastMsg"; t.textContent=msg;
