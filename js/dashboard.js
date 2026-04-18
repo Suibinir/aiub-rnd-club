@@ -743,15 +743,17 @@ function updateAdminStats(){
 }
 function openAddMemberModal(){ document.getElementById("addMemberModal").style.display="flex"; document.getElementById("addMemberForm").reset(); document.getElementById("addMemberError").textContent=""; }
 function closeAddMemberModal(){ document.getElementById("addMemberModal").style.display="none"; }
-function submitAddMember(){
-  const v=id=>document.getElementById(id).value.trim();
-  const name=v("newName"),mid=v("newId"),pwd=v("newPassword"),dept=v("newDept"),email=v("newEmail"),phone=v("newPhone"),year=v("newYear"),role=v("newRole"),status=v("newStatus");
-  const errEl=document.getElementById("addMemberError");
-  if(!name||!mid||!pwd||!dept||!email){ errEl.textContent="⚠️ Name, ID, Password, Dept and Email are required."; return; }
-  if(pwd.length<6){ errEl.textContent="⚠️ Password must be at least 6 characters."; return; }
-  const initials=(name.split(" ").map(w=>w[0]).join("").toUpperCase()+"??").slice(0,2);
-  if(!addMember({id:mid,password:pwd,name,initials,role,dept,email,phone,year,status})){ errEl.textContent="⚠️ A member with that ID already exists."; return; }
-  closeAddMemberModal(); renderAdmin(); renderLeaderboard(); showToast("✅ Member '"+name+"' added!");
+async function submitAddMember() {
+  // ... (keep your existing code that gets values from the inputs) ...
+
+  // Notice the 'await' here
+  const success = await addMember(newMember); 
+
+  if (success) {
+    closeAddMemberModal();
+    alert("Member added to cloud database!");
+    window.location.reload(); 
+  }
 }
 function confirmRemoveMember(memberId,memberName){
   if(!confirm(`Remove "${memberName}" (${memberId})?\n\nThis permanently deletes their account and all data.`)) return;
