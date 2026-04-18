@@ -20,15 +20,25 @@ function getAllMembers() {
   return SEED_MEMBERS;
 }
 function saveAllMembers(m) { localStorage.setItem("uniclub_members", JSON.stringify(m)); }
-function addMember(m) {
-  const all = getAllMembers();
-  if (all.find(x => x.id === m.id)) return false;
-  all.push(m);
-  saveAllMembers(all);
-  const lb = getLeaderboard();
-  lb.push({ id:m.id, name:m.name, initials:m.initials, points:0, badges:0, bgColor:"#e9ecef", txtColor:"#495057" });
-  saveLeaderboard(lb);
-  return true;
+// Change 'newMember' to 'm' or vice-versa to stay consistent
+async function addMember(m) {
+  try {
+    // Saves the member to the cloud
+    await db.collection("members").doc(m.id).set(m);
+    
+    // Updates the leaderboard in the cloud
+    await db.collection("leaderboard").doc(m.id).set({
+      id: m.id,
+      name: m.name,
+      initials: m.initials || "??",
+      points: 0,
+      rank: 99
+    });
+    return true;
+  } catch (error) {
+    console.error("Firebase Error:", error);
+    return false;
+  }
 }
 function removeMember(id) {
   saveAllMembers(getAllMembers().filter(m => m.id !== id));
