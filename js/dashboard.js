@@ -789,6 +789,14 @@ async function renderAdmin() {
     console.error("Cloud Fetch Error:", err);
   }
 }
+async function handleRemoveMember(memberId) {
+  if (confirm("Are you sure you want to remove this member from the Cloud?")) {
+    await db.collection("members").doc(memberId).delete();
+    await db.collection("leaderboard").doc(memberId).delete();
+    alert("Member removed.");
+    renderMemberTable(); // Refresh the list
+  }
+}
 async function renderMemberTable() { // Added async
   const tbody = document.getElementById("adminMemberTbody"); 
   if (!tbody) return;
