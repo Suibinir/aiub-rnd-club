@@ -634,22 +634,21 @@ function deletePaper(id){
 }
 
 // -- Teams --
-async function renderTeams() {
+async function renderTeams() { // ADD ASYNC
   const container = document.getElementById("projectTeamsList");
   if (!container) return;
 
-  // 1. Get teams and members from the source
   const teams = getTeams(); 
   
-  // 2. Fetch members from the cloud correctly
+  // Fetch cloud members so .find works
   const snapshot = await db.collection("members").get();
   const membersList = [];
   snapshot.forEach(doc => membersList.push(doc.data()));
 
   container.innerHTML = teams.map(t => {
-    // 3. Fix the .find error by using the fetched membersList
     const membersHTML = t.members.map(mId => {
-      const m = membersList.find(x => x.id === mId); // This was line 643
+      // Use membersList (the array) instead of members (the function)
+      const m = membersList.find(x => x.id === mId); 
       return `<span class="team-member-tag" title="${m ? m.name : 'Unknown'}">${m ? m.initials : '??'}</span>`;
     }).join("");
 
