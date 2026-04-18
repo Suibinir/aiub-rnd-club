@@ -386,19 +386,35 @@ function deleteNotice(id){
 // =============================================
 // LEADERBOARD
 // =============================================
-function renderLeaderboard(){
-  const list=document.getElementById("leaderboardList"); if(!list) return;
-  list.innerHTML=getLeaderboard().map((e,idx)=>{
-    const rank=idx+1, isYou=e.id===uid;
-    const rc=rank===1?"gold":rank===2?"silver":rank===3?"bronze":"";
-    return `<div class="lb-item ${isYou?"lb-you":""}">
-      <span class="lb-rank ${rc}">${rank}</span>
-      <div class="lb-avatar" style="background:${e.bgColor};color:${e.txtColor}">${e.initials}</div>
-      <div class="lb-name">${e.name}${isYou?` <span class="you-tag">You</span>`:""}</div>
-      <span class="lb-badges">${e.badges} badge${e.badges!==1?"s":""}</span>
-      <div class="lb-score">${e.points} pts</div>
-    </div>`;
-  }).join("");
+async function renderLeaderboard() { // Added async
+  const list = document.getElementById("leaderboardList"); 
+  if (!list) return;
+
+  try {
+    // 1. Fetch all members from the 'leaderboard' collection in the cloud
+    const snapshot = await db.collection("leaderboard").get();
+    const lbData = [];
+    snapshot.forEach(doc => lbData.push(doc.data()));
+
+    // 2. Sort by points (highest to lowest)
+    lbData.sort((a, b) => b.points - a.points);
+
+    // 3. Generate the HTML
+    list.innerHTML = lbData.map((e, idx) => {
+      const rank = idx + 1, isYou = e.id === uid;
+      const rc = rank === 1 ? "gold" : rank === 2 ? "silver" : rank === 3 ? "bronze" : "";
+      
+      return `<div class="lb-item ${isYou ? "lb-you" : ""}">
+        <span class="lb-rank ${rc}">${rank}</span>
+        <div class="lb-avatar" style="background:${e.bgColor || '#cfe2ff'};color:${e.txtColor || '#0a3980'}">${e.initials}</div>
+        <div class="lb-name">${e.name}${isYou ? ` <span class="you-tag">You</span>` : ""}</div>
+        <span class="lb-badges">${e.badges || 0} badge${e.badges !== 1 ? "s" : ""}</span>
+        <div class="lb-score">${e.points || 0} pts</div>
+      </div>`;
+    }).join("");
+  } catch (error) {
+    console.error("Leaderboard Load Error:", error);
+  }
 }
 
 // =============================================
