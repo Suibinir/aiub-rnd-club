@@ -749,56 +749,92 @@ function deleteSeminar(id){ if(!confirm("Delete this seminar record?")) return; 
 // ADMIN
 // =============================================
 async function renderAdmin() {
+  // 1. Target the correct table body
   const container = document.getElementById("adminMembersList");
-  if (!container) return;
+  if (!container) {
+    console.error("Error: Could not find table body with ID 'adminMembersList'");
+    return;
+  }
 
   try {
-    // 1. Fetch from Firestore
+    // 2. Fetch the latest members from Cloud
     const snapshot = await db.collection("members").get();
     const cloudMembers = [];
     snapshot.forEach(doc => cloudMembers.push(doc.data()));
 
-    // 2. Clear and Draw
+    // 3. Clear the "Loading..." or old rows
     container.innerHTML = "";
+
+    // 4. Loop and Create Rows
     cloudMembers.forEach(m => {
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>
           <div class="user-info">
-            <div class="user-avatar" style="background:#cfe2ff;color:#0a3980">${m.initials || '??'}</div>
+            <div class="user-avatar" style="background:#cfe2ff;color:#0a3980">${m.initials || "??"}</div>
             <div>
               <div class="user-name">${m.name}</div>
               <div class="user-id">${m.id}</div>
             </div>
           </div>
         </td>
-        <td>${m.dept || 'N/A'}</td>
-        <td><span class="badge badge-success">${m.status || 'active'}</span></td>
-        <td><button class="btn-outline" onclick="alert('Profile of ${m.name}')">View</button></td>
+        <td>${m.dept || "N/A"}</td>
+        <td><span class="badge badge-success">${m.status || "active"}</span></td>
+        <td><button class="btn-outline" onclick="alert('Profile: ${m.name}')">View</button></td>
       `;
       container.appendChild(tr);
     });
+    console.log("Admin list rendered with " + cloudMembers.length + " members.");
   } catch (err) {
-    console.error("Error loading members:", err);
+    console.error("Cloud Fetch Error:", err);
   }
 }
-function renderMemberTable(){
-  const tbody=document.getElementById("adminMemberTbody"); if(!tbody) return;
-  const lb=getLeaderboard(), members=getAllMembers();
-  tbody.innerHTML=members.map(u=>{
-    const pts=(lb.find(e=>e.id===u.id)||{points:0}).points;
-    const pic=loadProfilePic(u.id);
-    const avatarHTML=pic?`<img src="${pic}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:6px;"/>`:`<span class="mini-avatar">${u.initials}</span>`;
-    return `<tr>
-      <td>${avatarHTML}<strong>${u.name}</strong></td>
-      <td style="font-size:12px;color:var(--text2)">${u.id}</td>
-      <td>${u.dept}</td><td>${u.year||"—"}</td>
-      <td>${u.role==="admin"?'<span class="pill" style="background:var(--warning-light);color:var(--warning)">Admin</span>':'<span class="pill pill-present">Member</span>'}</td>
-      <td><span class="pill ${u.status==="active"?"pill-present":"pill-absent"}">${u.status||"active"}</span></td>
-      <td><strong>${pts}</strong></td>
-      <td>${u.id===uid?'<span style="font-size:12px;color:var(--text3)">You</span>':`<button class="btn-tbl-danger" onclick="confirmRemoveMember('${u.id}','${u.name.replace(/'/g,"\\'").replace(/"/g,'\\"')}')">Remove</button>`}</td>
-    </tr>`;
-  }).join("");
+async function renderMemberTable() { // Added async
+  const tbody = document.getElementById("adminMemberTbody"); 
+  if (!tbody) return;
+
+  try {
+    // 1. Fetch live members from Cloud
+    const snapshot = await db.collection("members").get();
+    const members = [];
+    snapshot.forEach(doc => members.push(doc.data()));
+
+    // 2. Fetch live points from Leaderboard collection
+    const lbSnapshot = await db.collection("leaderboard").get();
+    const lbData = [];
+    lbSnapshot.forEach(doc => lbData.push(doc.data()));
+
+    // 3. Generate the rows
+    tbody.innerHTML = members.map(u => {
+      // Find points from the cloud leaderboard data
+      const pts = (lbData.find(e => e.id === u.id) || { points: 0 }).points;
+      
+      const pic = loadProfilePic(u.id);
+      const avatarHTML = pic 
+        ? `<img src="${pic}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:6px;"/>` 
+        : `<span class="mini-avatar">${u.initials || "??"}</span>`;
+
+      return `<tr>
+        <td>${avatarHTML}<strong>${u.name}</strong></td>
+        <td style="font-size:12px;color:var(--text2)">${u.id}</td>
+        <td>${u.dept || "N/A"}</td>
+        <td>${u.year || "—"}</td>
+        <td>${u.role === "admin" 
+          ? '<span class="pill" style="background:var(--warning-light);color:var(--warning)">Admin</span>' 
+          : '<span class="pill pill-present">Member</span>'}</td>
+        <td><span class="pill ${u.status === "active" ? "pill-present" : "pill-absent"}">${u.status || "active"}</span></td>
+        <td><strong>${pts}</strong></td>
+        <td>${u.id === uid 
+          ? '<span style="font-size:12px;color:var(--text3)">You</span>' 
+          : `<button class="btn-tbl-danger" onclick="handleRemoveMember('${u.id}')">Remove</button>`}</td>
+      </tr>`;
+    }).join("");
+
+    console.log("Admin table updated from Cloud.");
+  } catch (error) {
+    console.error("Error rendering member table:", error);
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:red;">Failed to load members from cloud.</td></tr>`;
+  }
 }
 function updateAdminStats(){
   const members=getAllMembers(), lb=getLeaderboard();
