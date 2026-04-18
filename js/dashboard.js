@@ -743,15 +743,17 @@ function updateAdminStats(){
 }
 function openAddMemberModal(){ document.getElementById("addMemberModal").style.display="flex"; document.getElementById("addMemberForm").reset(); document.getElementById("addMemberError").textContent=""; }
 function closeAddMemberModal(){ document.getElementById("addMemberModal").style.display="none"; }
-async function submitAddMember() {
-  // ... (keep your existing code that gets values from the inputs) ...
+async function submitAddMember() { // Added 'async'
+  // ... (your existing code to get input values) ...
+  
+  const newMember = { /* ... */ };
 
-  // Notice the 'await' here
+  // Added 'await' here
   const success = await addMember(newMember); 
 
   if (success) {
-    closeAddMemberModal();
     alert("Member added to cloud database!");
+    closeAddMemberModal();
     window.location.reload(); 
   }
 }
