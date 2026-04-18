@@ -455,6 +455,24 @@ document.addEventListener("DOMContentLoaded",()=>{
   const sn=document.getElementById("myStreakNum"); if(sn) sn.textContent=st.streak;
   const mr=document.getElementById("myAttRate"); if(mr) mr.textContent=st.attendanceRate+"%";
 });
+
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+
+<script>
+  // 2. Paste your specific info from the screenshot here
+  const firebaseConfig = {
+    apiKey: "AIzaSyCCEfpPzmhIbk9GIt2aYDl6R0gJ4fasfnM", // Replace with your real API Key
+      authDomain: "aiub-rnd-club.firebaseapp.com",
+      projectId: "aiub-rnd-club",
+      storageBucket: "aiub-rnd-club.firebasestorage.app",
+      messagingSenderId: "652214407284", // Replace with your sender ID
+      appId: "1:652214407284:web:1d908b123525099346c121" // Replace with your app ID
+  };
+
+  // 3. Initialize it
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
 </script>
 </body>
 </html>
