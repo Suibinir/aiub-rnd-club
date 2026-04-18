@@ -757,16 +757,17 @@ function deleteSeminar(id){ if(!confirm("Delete this seminar record?")) return; 
 // =============================================
 // ADMIN
 // =============================================
+// =============================================
+// ADMIN
+// =============================================
 async function renderAdmin() {
-  // Change "adminMembersList" to "adminMemberTbody"
+  // 1. Identify the container (matches ID in dashboard.html)
   const container = document.getElementById("adminMemberTbody"); 
   
   if (!container) {
     console.error("Error: Could not find table body with ID 'adminMemberTbody'");
     return;
   }
-  // ... rest of the code
-}
 
   try {
     // 2. Fetch the latest members from Cloud
@@ -800,7 +801,8 @@ async function renderAdmin() {
   } catch (err) {
     console.error("Cloud Fetch Error:", err);
   }
-}
+} // <--- THIS is where the function should end
+
 async function handleRemoveMember(memberId) {
   if (confirm("Are you sure you want to remove this member from the Cloud?")) {
     await db.collection("members").doc(memberId).delete();
