@@ -713,8 +713,35 @@ function deleteSeminar(id){ if(!confirm("Delete this seminar record?")) return; 
 // =============================================
 // ADMIN
 // =============================================
-function renderAdmin(){
-  renderMemberTable(); updateAdminStats();
+async function renderAdmin() {
+  const container = document.getElementById("adminMembersList");
+  if (!container) return;
+
+  // 1. Get the latest data from the Cloud
+  const snapshot = await db.collection("members").get();
+  const cloudMembers = [];
+  snapshot.forEach(doc => cloudMembers.push(doc.data()));
+
+  // 2. Clear the list and draw the members
+  container.innerHTML = "";
+  cloudMembers.forEach(m => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>
+        <div class="user-info">
+          <div class="user-avatar" style="background:#cfe2ff;color:#0a3980">${m.initials}</div>
+          <div>
+            <div class="user-name">${m.name}</div>
+            <div class="user-id">${m.id}</div>
+          </div>
+        </div>
+      </td>
+      <td>${m.dept}</td>
+      <td><span class="badge badge-success">${m.status}</span></td>
+      <td><button class="btn-outline" onclick="alert('Profile of ${m.name}')">View</button></td>
+    `;
+    container.appendChild(tr);
+  });
 }
 function renderMemberTable(){
   const tbody=document.getElementById("adminMemberTbody"); if(!tbody) return;
