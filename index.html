@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>UniClub Portal – Login</title>
+  <link rel="stylesheet" href="css/style.css"/>
+</head>
+<body class="login-page">
+  <div class="login-wrapper">
+    <div class="login-card">
+      <div class="club-logo">
+        <img src="IMG/logo.jpg" alt="Club Logo"/> 
+      </div>
+      <h1 class="login-title">AIUB R&D Club Portal</h1>
+      <p class="login-sub">Sign in to your club member account</p>
+      <div class="error-msg" id="errorMsg"></div>
+      <div class="form-group">
+        <label for="studentId">Student ID</label>
+        <input type="text" id="studentId" placeholder="e.g. admin  or  2024-CS-042"/>
+      </div>
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" placeholder="••••••••"/>
+      </div>
+      <button class="btn-primary" onclick="handleLogin()">Sign In →</button>
+      <p class="demo-hint">
+        Powered by <strong>PaperTown Digital</strong> <br>Demo. Use <code>admin</code> as Student ID and <code>password</code> as Password to log in.
+      </p>
+    </div>
+  </div>
+  <script src="js/data.js"></script>
+  <script src="js/login.js"></script>
+</body>
+</html>
