@@ -634,29 +634,39 @@ function deletePaper(id){
 }
 
 // -- Teams --
-function renderTeams(){
-  const el=document.getElementById("teamList"); if(!el) return;
-  const teams=getResearchData().teams;
-  const members=getAllMembers();
-  el.innerHTML=teams.map(t=>{
-    const isMember=t.members.includes(uid);
-    const memberNames=t.members.map(id=>{ const m=members.find(x=>x.id===id); return m?m.name:id; });
-    return `<div class="team-card">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-        <div class="team-name">${t.name}</div>
-        <span class="team-status ${t.status==="Active"?"status-active":"status-forming"}">${t.status}</span>
+async function renderTeams() {
+  const container = document.getElementById("projectTeamsList");
+  if (!container) return;
+
+  // 1. Get teams and members from the source
+  const teams = getTeams(); 
+  
+  // 2. Fetch members from the cloud correctly
+  const snapshot = await db.collection("members").get();
+  const membersList = [];
+  snapshot.forEach(doc => membersList.push(doc.data()));
+
+  container.innerHTML = teams.map(t => {
+    // 3. Fix the .find error by using the fetched membersList
+    const membersHTML = t.members.map(mId => {
+      const m = membersList.find(x => x.id === mId); // This was line 643
+      return `<span class="team-member-tag" title="${m ? m.name : 'Unknown'}">${m ? m.initials : '??'}</span>`;
+    }).join("");
+
+    return `
+      <div class="team-card">
+        <div class="team-card-header">
+          <div class="team-badge">${t.category}</div>
+          <h4>${t.name}</h4>
+        </div>
+        <p>${t.desc}</p>
+        <div class="team-footer">
+          <div class="team-members">${membersHTML}</div>
+          <button class="btn-sm" onclick="alert('Join request sent for ${t.name}')">Join</button>
+        </div>
       </div>
-      <div class="team-topic">🔬 ${t.topic}</div>
-      <div class="team-lead">👑 Lead: <strong>${t.lead}</strong></div>
-      <div class="team-members">👥 ${memberNames.join(", ")}</div>
-      <div style="margin-top:.75rem;display:flex;gap:8px;flex-wrap:wrap;">
-        ${isMember
-          ? `<span class="badge-registered" style="font-size:12px;">✓ You're in this team</span>`
-          : `<button class="btn-register" style="font-size:12px;padding:5px 14px;" onclick="joinTeam(${t.id})">Join Team</button>`}
-        ${isAdmin?`<button class="btn-admin-ev" onclick="deleteTeam(${t.id})">🗑 Remove</button>`:""}
-      </div>
-    </div>`;
-  }).join("") || `<p style="color:var(--text3);">No teams yet.</p>`;
+    `;
+  }).join("");
 }
 function joinTeam(teamId){
   const d=getResearchData(), t=d.teams.find(x=>x.id===teamId); if(!t||t.members.includes(uid)) return;
