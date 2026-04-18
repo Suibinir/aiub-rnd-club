@@ -777,7 +777,6 @@ async function submitAddMember() {
 
   // 4. Send to Firebase (using the 'await' we discussed)
   const success = await addMember(newMemberObj); 
-
   if (success) {
     alert("Success! Member added to the cloud.");
     closeAddMemberModal();
