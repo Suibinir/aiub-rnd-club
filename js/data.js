@@ -5,11 +5,17 @@
 
 
 // ---- MEMBERS ----
-function getAllMembers() {
-  const raw = localStorage.getItem("uniclub_members");
-  if (raw) return JSON.parse(raw);
-  localStorage.setItem("uniclub_members", JSON.stringify(SEED_MEMBERS));
-  return SEED_MEMBERS;
+// Replace your existing getAllMembers in data.js with this:
+async function getAllMembers() {
+  try {
+    const snapshot = await db.collection("members").get();
+    const members = [];
+    snapshot.forEach(doc => members.push(doc.data()));
+    return members;
+  } catch (error) {
+    console.error("Error fetching members from cloud:", error);
+    return SEED_MEMBERS; // Fallback to seed if cloud fails
+  }
 }
 function saveAllMembers(m) { localStorage.setItem("uniclub_members", JSON.stringify(m)); }
 // Change 'newMember' to 'm' or vice-versa to stay consistent
