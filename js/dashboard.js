@@ -743,18 +743,47 @@ function updateAdminStats(){
 }
 function openAddMemberModal(){ document.getElementById("addMemberModal").style.display="flex"; document.getElementById("addMemberForm").reset(); document.getElementById("addMemberError").textContent=""; }
 function closeAddMemberModal(){ document.getElementById("addMemberModal").style.display="none"; }
-async function submitAddMember() { // Added 'async'
-  // ... (your existing code to get input values) ...
-  
-  const newMember = { /* ... */ };
+async function submitAddMember() {
+  // 1. Get values from the modal inputs
+  const nameInput = document.getElementById('newName').value.trim();
+  const idInput = document.getElementById('newId').value.trim();
+  const passwordInput = document.getElementById('newPassword').value || "123456";
+  const deptInput = document.getElementById('newDept').value;
+  const emailInput = document.getElementById('newEmail').value.trim();
+  const phoneInput = document.getElementById('newPhone').value.trim();
+  const yearInput = document.getElementById('newYear').value;
+  const roleInput = document.getElementById('newRole').value;
+  const statusInput = document.getElementById('newStatus').value;
 
-  // Added 'await' here
-  const success = await addMember(newMember); 
+  // 2. Simple validation
+  if (!nameInput || !idInput) {
+    alert("Name and Student ID are required!");
+    return;
+  }
+
+  // 3. Create the member object
+  const newMemberObj = {
+    id: idInput,
+    name: nameInput,
+    password: passwordInput,
+    dept: deptInput,
+    email: emailInput,
+    phone: phoneInput,
+    year: yearInput,
+    role: roleInput,
+    status: statusInput,
+    initials: nameInput.split(' ').map(n => n[0]).join('').toUpperCase()
+  };
+
+  // 4. Send to Firebase (using the 'await' we discussed)
+  const success = await addMember(newMemberObj); 
 
   if (success) {
-    alert("Member added to cloud database!");
+    alert("Success! Member added to the cloud.");
     closeAddMemberModal();
     window.location.reload(); 
+  } else {
+    alert("Error: Could not save to cloud. Check your connection or Firebase Rules.");
   }
 }
 function confirmRemoveMember(memberId,memberName){
