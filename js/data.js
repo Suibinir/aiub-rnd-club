@@ -2,15 +2,7 @@
    UNICLUB PORTAL — DATA.JS  v4
    ============================================= */
 
-const SEED_MEMBERS = [
-  { id:"admin",        password:"admin123", name:"Asif Mahmud",      initials:"AM", role:"admin",  dept:"CS Dept",  email:"asif@university.edu",   phone:"01700-000001", year:"Faculty",  status:"active" },
-  { id:"member",       password:"pass123",  name:"Arif Rahman",      initials:"AR", role:"member", dept:"CS Dept",  email:"arif.r@university.edu", phone:"01700-000002", year:"2nd Year", status:"active" },
-  { id:"2024-CS-042",  password:"arif2024", name:"Arif Rahman",      initials:"AR", role:"member", dept:"CS Dept",  email:"arif.r@university.edu", phone:"01700-000002", year:"2nd Year", status:"active" },
-  { id:"2024-EEE-015", password:"eee2024",  name:"Fatima Begum",     initials:"FB", role:"member", dept:"EEE Dept", email:"fatima@university.edu", phone:"01700-000003", year:"2nd Year", status:"active" },
-  { id:"2024-ME-007",  password:"me2024",   name:"Tanvir Chowdhury", initials:"TC", role:"member", dept:"ME Dept",  email:"tanvir@university.edu", phone:"01700-000004", year:"3rd Year", status:"active" },
-  { id:"2023-CS-010",  password:"nadia123", name:"Nadia Khan",       initials:"NK", role:"member", dept:"CS Dept",  email:"nadia@university.edu",  phone:"01700-000005", year:"3rd Year", status:"active" },
-  { id:"2023-BA-019",  password:"sadia123", name:"Sadia Ferdousi",   initials:"SF", role:"member", dept:"BBA Dept", email:"sadia@university.edu",  phone:"01700-000006", year:"3rd Year", status:"inactive" }
-];
+
 
 // ---- MEMBERS ----
 function getAllMembers() {
