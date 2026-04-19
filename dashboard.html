@@ -435,73 +435,14 @@
   </main>
 </div>
 
-<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
-
-  <script>
-    // 2. Firebase Configuration
-    const firebaseConfig = {
-      apiKey: "AIzaSyCCEfpPzmhIbk9GIt2aYDl6R0gJ4fasfnM",
-      authDomain: "aiub-rnd-club.firebaseapp.com",
-      projectId: "aiub-rnd-club",
-      storageBucket: "aiub-rnd-club.firebasestorage.app",
-      messagingSenderId: "652214407284",
-      appId: "1:652214407284:web:1d908b123525099346c121"
-    };
-
-    // Initialize Firebase
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.firestore();
-    console.log("Firebase is ready!");
-  </script>
-
-  <script src="js/data.js"></script>
-  <script src="js/dashboard.js"></script>
-
-  <script>
-    function downloadSampleCSV() {
-      const csv = `Name,StudentID,Password,Department,Email,Phone,Year,Role,Status\nRahim Ahmed,2025-CS-001,rahim123,CS Dept,rahim@univ.edu,01711-000001,1st Year,member,active\nSumaiya Islam,2025-EEE-002,sumaiya123,EEE Dept,sumaiya@univ.edu,01711-000002,1st Year,member,active`;
-      const blob = new Blob([csv], { type: "text/csv" }); 
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a"); 
-      a.href = url; a.download = "UniClub_Import_Sample.csv";
-      document.body.appendChild(a); a.click(); document.body.removeChild(a); 
-      URL.revokeObjectURL(url);
-    }
-
-    // Mirror streak bar on attendance page
-    document.addEventListener("DOMContentLoaded", () => {
-      const u = loadSession(); 
-      if (!u) return;
-      
-      const sk = loadData(u.id, "streak", getDefaultStreak());
-      const bar2 = document.getElementById("streakBar2"); 
-      if (!bar2) return;
-      
-      const today = new Date().getDate();
-      sk.forEach((val, idx) => { 
-        const day = idx + 1;
-        const dot = document.createElement("div"); 
-        dot.className = "streak-day"; 
-        dot.title = "Day " + day; 
-        
-        if (val === null || day > today) {
-          dot.style.opacity = "0.25";
-        } else if (day === today) {
-          dot.classList.add("today");
-          if (val) dot.classList.add("present");
-        } else {
-          dot.classList.add(val ? "present" : "absent");
-        }
-        bar2.appendChild(dot); 
-      });
-
-      const st = loadData(u.id, "stats", getDefaultStats(u.id));
-      const sn = document.getElementById("myStreakNum"); 
-      if (sn) sn.textContent = st.streak;
-      const mr = document.getElementById("myAttRate"); 
-      if (mr) mr.textContent = st.attendanceRate + "%";
-    });
-  </script>
+<script type="module" src="js/dashboard.js"></script>
+<script>
+function downloadSampleCSV(){
+  const csv=`Name,StudentID,Password,Department,Email,Phone,Year,Role,Status\nRahim Ahmed,2025-CS-001,rahim123,CS Dept,rahim@univ.edu,01711-000001,1st Year,member,active\nSumaiya Islam,2025-EEE-002,sumaiya123,EEE Dept,sumaiya@univ.edu,01711-000002,1st Year,member,active`;
+  const blob=new Blob([csv],{type:"text/csv"}); const url=URL.createObjectURL(blob);
+  const a=document.createElement("a"); a.href=url; a.download="AIUB_RD_Import_Sample.csv";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+</script>
 </body>
 </html>
