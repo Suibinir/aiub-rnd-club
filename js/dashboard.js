@@ -1,76 +1,114 @@
 /* =============================================
-   UNICLUB PORTAL — DASHBOARD.JS  v5
-   Fixes:
-   - Admin can create events (Add Event modal)
-   - Admin's Manage button shows even when registered
-   - Change password for all users
-   New research club features:
-   - Research Paper Library
-   - Project Teams
-   - Supervisor/Mentor Board
-   - Seminar Tracker
+   AIUB R&D CLUB — DASHBOARD.JS (Firebase)
+   All localStorage replaced with Firestore.
+   Real-time listeners for leaderboard, notices, events.
    ============================================= */
+import {
+  loadSession, clearSession, saveSession,
+  db, findUser, changePassword,
+  getAllMembers, addMember, removeMember,
+  getStats, saveStats, addPointsToMember,
+  getAttendance, addAttendanceRecord,
+  getStreak, saveStreak,
+  getBadges, earnBadge,
+  getEvents, createEvent, updateEvent, deleteEvent, registerForEvent, markEventAttendee,
+  getNotices, addNotice, deleteNotice as fbDeleteNotice,
+  getLeaderboard, getUserRank,
+  saveProfilePic, loadProfilePic,
+  getPapers, addPaper, deletePaper as fbDeletePaper,
+  getTeams, addTeam, joinTeam as fbJoinTeam, deleteTeam as fbDeleteTeam,
+  getMentors, addMentor, deleteMentor as fbDeleteMentor,
+  getSeminars, addSeminar, deleteSeminar as fbDeleteSeminar,
+  saveBulkAttendance,
+  listenToLeaderboard, listenToNotices, listenToEvents
+} from "./firebase.js";
 
+// ---- AUTH GUARD ----
 const currentUser = loadSession();
 if (!currentUser) window.location.href = "index.html";
 const uid = currentUser.id;
 const isAdmin = currentUser.role === "admin";
 
-let stats      = loadData(uid,"stats",     getDefaultStats(uid));
-let attendance = loadData(uid,"attendance",getDefaultAttendance());
-let badges     = loadData(uid,"badges",    getDefaultBadges());
-let streak     = loadData(uid,"streak",    getDefaultStreak());
-let notices    = JSON.parse(localStorage.getItem("uniclub_notices")||JSON.stringify(getDefaultNotices()));
-function getEvents(){ return getGlobalEvents(); }
+// ---- APP STATE ----
+let stats = {}, attendance = [], badges = [], streak = [], notices = [], events = [], leaderboard = [];
+let unsubLeaderboard, unsubNotices, unsubEvents;
+
+// ---- PENDING PDF ----
+let _pendingPdfData = null, _pendingPdfName = null;
+
+// ---- ESCAPE HTML ----
+function escHtml(s){ return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 
 // =============================================
 // INIT
 // =============================================
-// =============================================
-// INIT — Now with Cloud Power!
-// =============================================
-document.addEventListener("DOMContentLoaded", async () => { // Added 'async'
-  setupUser(); 
-  setupDateTime(); 
-  setupNavigation(); 
-  setupTheme();
-  
-  // 1. Load data that doesn't change much
-  renderHome(); 
-  renderAttendance(); 
-  renderEvents(); 
-  renderNotices();
-  renderProfile(); 
-  renderResearch();
-  
-  // 2. Fetch the LIVE members and leaderboard from the Cloud
-  console.log("Fetching live data from Cloud...");
-  await renderLeaderboard(); 
-  
-  if(isAdmin) {
-    await renderAdmin();
+document.addEventListener("DOMContentLoaded", async ()=>{
+  showGlobalLoader(true);
+  try {
+    setupUser();
+    setupDateTime();
+    setupNavigation();
+    setupTheme();
+    // Load all data in parallel
+    [stats, attendance, badges, streak] = await Promise.all([
+      getStats(uid),
+      getAttendance(uid),
+      getBadges(uid),
+      getStreak(uid)
+    ]);
+    // Real-time listeners
+    unsubLeaderboard = listenToLeaderboard(lb=>{ leaderboard=lb; renderLeaderboard(); refreshStats(); });
+    unsubNotices     = listenToNotices(n=>{ notices=n; renderNotices(); updateNoticeBadge(); });
+    unsubEvents      = listenToEvents(e=>{ events=e; renderEvents(); renderHomeEvents(); });
+    renderHome();
+    renderAttendance();
+    renderProfile();
+    await renderResearch();
+    if(isAdmin) await renderAdmin();
+  } catch(e){
+    console.error("Init error:", e);
+    showToast("⚠️ Failed to load some data. Check connection.", "warn");
   }
-  
-  console.log("Dashboard fully synced with Firebase!");
+  showGlobalLoader(false);
 });
 
+function showGlobalLoader(on){
+  let el = document.getElementById("globalLoader");
+  if(!el){
+    el = document.createElement("div");
+    el.id = "globalLoader";
+    el.innerHTML = `<div style="position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9998;">
+      <div style="font-size:32px;margin-bottom:1rem;">🎓</div>
+      <div style="font-size:15px;color:var(--text2);">Loading AIUB R&D Club...</div>
+      <div style="margin-top:1rem;width:200px;height:3px;background:var(--border);border-radius:2px;overflow:hidden;">
+        <div style="height:100%;background:var(--primary);animation:loadBar 1.5s ease-in-out infinite;border-radius:2px;"></div>
+      </div>
+    </div>`;
+    const style = document.createElement("style");
+    style.textContent = "@keyframes loadBar{0%{width:0%;margin-left:0}50%{width:60%;margin-left:20%}100%{width:0%;margin-left:100%}}";
+    document.head.appendChild(style);
+    document.body.appendChild(el);
+  }
+  el.style.display = on ? "block" : "none";
+}
+
 // =============================================
-// USER
+// USER SETUP
 // =============================================
 function setupUser(){
-  setAvatar("sidebarAvatar", uid, currentUser.initials);
+  loadProfilePic(uid).then(pic => setAvatarEl("sidebarAvatar", pic, currentUser.initials));
   document.getElementById("sidebarName").textContent = currentUser.name;
   document.getElementById("sidebarRole").textContent = (isAdmin?"Admin":"Member")+" · "+currentUser.dept;
   if(isAdmin) document.body.classList.add("is-admin");
-  const h=new Date().getHours();
-  const g=h<12?"Good morning":h<17?"Good afternoon":"Good evening";
-  document.getElementById("greetingText").textContent=g+", "+currentUser.name.split(" ")[0]+"! 👋";
-  document.getElementById("todayDate").textContent=new Date().toLocaleDateString("en-US",{weekday:"long",year:"numeric",month:"long",day:"numeric"});
+  const h = new Date().getHours();
+  const g = h<12?"Good morning":h<17?"Good afternoon":"Good evening";
+  document.getElementById("greetingText").textContent = g+", "+currentUser.name.split(" ")[0]+"! 👋";
+  document.getElementById("todayDate").textContent = new Date().toLocaleDateString("en-US",{weekday:"long",year:"numeric",month:"long",day:"numeric"});
 }
-function setAvatar(elId, memberId, initials){
-  const el=document.getElementById(elId); if(!el) return;
-  const pic=loadProfilePic(memberId);
-  if(pic){ el.innerHTML=`<img src="${pic}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;"/>`; el.style.padding="0"; }
+
+function setAvatarEl(elId, picUrl, initials){
+  const el = document.getElementById(elId); if(!el) return;
+  if(picUrl){ el.innerHTML=`<img src="${picUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;"/>`; el.style.padding="0"; }
   else { el.textContent=initials; el.style.padding=""; }
 }
 
@@ -95,19 +133,16 @@ function setupNavigation(){
       item.classList.add("active");
       const t=document.getElementById("page-"+page); if(t) t.classList.add("active");
       document.getElementById("topbarTitle").textContent=item.textContent.trim().replace(/\s\d+$/,"").trim();
-      if(page==="notices"){const b=document.getElementById("noticeBadge");if(b)b.style.display="none";}
+      if(page==="notices"){ const b=document.getElementById("noticeBadge"); if(b) b.style.display="none"; }
       document.getElementById("sidebar").classList.remove("open");
     });
   });
 }
 function toggleSidebar(){ document.getElementById("sidebar").classList.toggle("open"); }
-function navigateTo(page){
-  const item=document.querySelector(`.nav-item[data-page="${page}"]`);
-  if(item) item.click();
-}
+function navigateTo(page){ const item=document.querySelector(`.nav-item[data-page="${page}"]`); if(item) item.click(); }
 
 // =============================================
-// THEME
+// THEME (localStorage is fine for UI preferences)
 // =============================================
 function setupTheme(){
   if(localStorage.getItem("uniclub_theme")==="dark"){ document.body.classList.add("dark"); document.getElementById("themeBtn").textContent="☀️ Light"; }
@@ -119,24 +154,17 @@ function toggleTheme(){
 }
 
 // =============================================
-// SAVE
-// =============================================
-function saveAll(){
-  saveData(uid,"stats",stats); saveData(uid,"attendance",attendance);
-  saveData(uid,"badges",badges); saveData(uid,"streak",streak);
-  localStorage.setItem("uniclub_notices",JSON.stringify(notices));
-}
-
-// =============================================
 // HOME
 // =============================================
 function renderHome(){
-  document.getElementById("statAttendance").textContent=stats.attendanceRate+"%";
-  document.getElementById("statEvents").textContent=stats.eventsAttended;
-  document.getElementById("statPoints").textContent=stats.points;
-  document.getElementById("statStreak").textContent=stats.streak+"d 🔥";
-  document.getElementById("statRank").textContent="#"+getUserRank(uid);
-  buildStreakBar("streakBar"); renderHomeBadges(); renderHomeEvents();
+  document.getElementById("statAttendance").textContent = (stats.attendanceRate||0)+"%";
+  document.getElementById("statEvents").textContent     = stats.eventsAttended||0;
+  document.getElementById("statPoints").textContent     = stats.points||0;
+  document.getElementById("statStreak").textContent     = (stats.streak||0)+"d 🔥";
+  const rank = leaderboard.findIndex(e=>e.id===uid);
+  document.getElementById("statRank").textContent = rank>=0 ? "#"+(rank+1) : "—";
+  buildStreakBar("streakBar");
+  renderHomeBadges();
 }
 function buildStreakBar(barId){
   const bar=document.getElementById(barId); if(!bar) return;
@@ -153,21 +181,23 @@ function buildStreakBar(barId){
 }
 function renderHomeBadges(){
   const g=document.getElementById("homeBadgeGrid"); if(!g) return;
-  g.innerHTML=badges.map(b=>`<div class="badge-item ${b.earned?"earned":""}" title="${b.desc}"><div class="badge-icon">${b.icon}</div><div class="badge-name">${b.name}</div></div>`).join("");
+  g.innerHTML=badges.map(b=>`<div class="badge-item ${b.earned?"earned":""}" title="${escHtml(b.desc)}"><div class="badge-icon">${b.icon}</div><div class="badge-name">${escHtml(b.name)}</div></div>`).join("");
 }
 function renderHomeEvents(){
   const list=document.getElementById("homeEventList"); if(!list) return;
-  list.innerHTML=getEvents().filter(e=>!e.past).slice(0,3).map(ev=>{
-    const reg=ev.registrants.includes(uid);
+  const upcoming=events.filter(e=>!e.past).slice(0,3);
+  if(!upcoming.length){ list.innerHTML=`<p style="color:var(--text3);">No upcoming events yet.</p>`; return; }
+  list.innerHTML=upcoming.map(ev=>{
+    const reg=(ev.registrants||[]).includes(uid);
     return `<div class="event-item">
       <div class="event-date-box"><div class="event-day">${ev.day}</div><div class="event-month">${ev.month}</div></div>
       <div class="event-info">
-        <div class="event-title">${ev.title}</div>
-        <div class="event-meta">${ev.time} · ${ev.venue}</div>
-        ${reg?`<span class="badge-registered">✓ Registered</span>`:`<button class="btn-register" onclick="registerEvent(${ev.id},this)">Register</button>`}
+        <div class="event-title">${escHtml(ev.title)}</div>
+        <div class="event-meta">${escHtml(ev.time)} · ${escHtml(ev.venue)}</div>
+        ${reg?`<span class="badge-registered">✓ Registered</span>`:`<button class="btn-register" onclick="doRegisterEvent('${ev.firestoreId||ev.id}',this)">Register</button>`}
       </div>
     </div>`;
-  }).join("") || `<p style="color:var(--text3);">No upcoming events.</p>`;
+  }).join("");
 }
 
 // =============================================
@@ -175,756 +205,551 @@ function renderHomeEvents(){
 // =============================================
 function renderAttendance(){
   buildStreakBar("streakBar2");
-  const rateEl=document.getElementById("myAttRate"); if(rateEl) rateEl.textContent=stats.attendanceRate+"%";
-  const strEl=document.getElementById("myStreakNum"); if(strEl) strEl.textContent=stats.streak;
+  const rateEl=document.getElementById("myAttRate"); if(rateEl) rateEl.textContent=(stats.attendanceRate||0)+"%";
+  const strEl=document.getElementById("myStreakNum"); if(strEl) strEl.textContent=stats.streak||0;
   renderAttendanceTable();
 }
 function renderAttendanceTable(){
   const tbody=document.getElementById("attendanceTbody"); if(!tbody) return;
-  const rows=[...attendance].reverse();
-  if(!rows.length){ tbody.innerHTML=`<tr><td colspan="4" style="text-align:center;color:var(--text3);padding:1.5rem">No attendance records yet. The admin gives attendance during sessions.</td></tr>`; return; }
-  tbody.innerHTML=rows.map(r=>`<tr><td>${r.date}</td><td>${r.session}</td><td><span class="pill pill-${r.status.toLowerCase()}">${r.status}</span></td><td>${r.note}</td></tr>`).join("");
+  if(!attendance.length){
+    tbody.innerHTML=`<tr><td colspan="4" style="text-align:center;color:var(--text3);padding:1.5rem;">No attendance records yet. Admin will give attendance during sessions.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML=[...attendance].slice(0,50).map(r=>`
+    <tr><td>${r.date}</td><td>${escHtml(r.session)}</td>
+    <td><span class="pill pill-${r.status.toLowerCase()}">${r.status}</span></td>
+    <td>${r.note||"—"}</td></tr>`).join("");
 }
 
 // =============================================
-// EVENTS — FIXED: admin can always Manage, + Add Event
+// EVENTS — real-time via listener
 // =============================================
-let selectedEventId=null;
 const categoryColors={ Competition:"#cfe2ff:#0a3980", Lecture:"#e1f5ee:#0F6E56", Workshop:"#faeeda:#BA7517", Social:"#f8d7c4:#7c4a2a", Seminar:"#f3e6fb:#6f42c1", Other:"#f0f2f5:#555" };
 
 function renderEvents(){
-  renderEventCards("upcomingEventList", getEvents().filter(e=>!e.past));
-  renderEventCards("pastEventList",     getEvents().filter(e=>e.past), true);
-  renderHomeEvents();
+  renderEventCards("upcomingEventList", events.filter(e=>!e.past));
+  renderEventCards("pastEventList",     events.filter(e=>e.past), true);
 }
-
 function renderEventCards(containerId, list, past=false){
   const el=document.getElementById(containerId); if(!el) return;
   if(!list.length){ el.innerHTML=`<p style="color:var(--text3);padding:1rem 0;">No events here yet.</p>`; return; }
   el.innerHTML=list.map(ev=>{
-    const registered=ev.registrants.includes(uid);
-    const spotsLeft=ev.capacity-ev.registrants.length;
-    const pct=Math.min(100,Math.round((ev.registrants.length/ev.capacity)*100));
+    const fid = ev.firestoreId || String(ev.id);
+    const registered=(ev.registrants||[]).includes(uid);
+    const spotsLeft=ev.capacity-(ev.registrants||[]).length;
+    const pct=Math.min(100,Math.round(((ev.registrants||[]).length/ev.capacity)*100));
     const [bg,tc]=(categoryColors[ev.category]||categoryColors.Other).split(":");
     return `
     <div class="ev-card ${past?"ev-past":""}">
       <div class="ev-card-left">
         <div class="ev-date-box ${past?"ev-past-box":""}">
-          <div class="ev-day">${ev.day}</div>
-          <div class="ev-month">${ev.month}</div>
-          <div class="ev-year">${ev.year}</div>
+          <div class="ev-day">${ev.day}</div><div class="ev-month">${ev.month}</div><div class="ev-year">${ev.year}</div>
         </div>
         <span class="ev-cat-badge" style="background:${bg};color:${tc}">${ev.category}</span>
       </div>
       <div class="ev-card-body">
-        <div class="ev-card-title">${ev.title}</div>
-        <div class="ev-card-desc">${ev.description}</div>
+        <div class="ev-card-title">${escHtml(ev.title)}</div>
+        <div class="ev-card-desc">${escHtml(ev.description)}</div>
         <div class="ev-meta-grid">
-          <div class="ev-meta-item">🕐 <span>${ev.time} · ${ev.duration}</span></div>
-          <div class="ev-meta-item">📍 <span>${ev.venue}</span></div>
-          <div class="ev-meta-item">👤 <span>${ev.organizer}</span></div>
+          <div class="ev-meta-item">🕐 <span>${escHtml(ev.time)} · ${escHtml(ev.duration)}</span></div>
+          <div class="ev-meta-item">📍 <span>${escHtml(ev.venue)}</span></div>
+          <div class="ev-meta-item">👤 <span>${escHtml(ev.organizer)}</span></div>
           <div class="ev-meta-item">🎯 <span>+${ev.points} pts on attendance</span></div>
         </div>
         ${!past?`<div class="ev-capacity-row">
           <div class="ev-capacity-bar"><div class="ev-capacity-fill" style="width:${pct}%"></div></div>
-          <span class="ev-capacity-text">${ev.registrants.length}/${ev.capacity} registered${spotsLeft>0?" · "+spotsLeft+" spots left":""}</span>
+          <span class="ev-capacity-text">${(ev.registrants||[]).length}/${ev.capacity} registered${spotsLeft>0?" · "+spotsLeft+" spots left":""}</span>
         </div>`:""}
         <div class="ev-card-actions">
           ${past
-            ? ev.attendees.includes(uid) ? `<span class="badge-registered">✓ You attended · +${ev.points} pts</span>` : `<span class="badge-absent-event">✗ Not attended</span>`
-            : registered
-              ? `<span class="badge-registered">✓ Registered</span>`
-              : spotsLeft>0 ? `<button class="btn-register" onclick="registerEvent(${ev.id},this)">Register for this event</button>` : `<span class="badge-full">Event Full</span>`
-          }
-          ${/* FIX: Admin ALWAYS sees Manage, regardless of registration */ isAdmin
-            ? `<button class="btn-admin-ev" onclick="openEventAdmin(${ev.id})">⚙️ Manage</button>`
-              + (isAdmin && !past ? `<button class="btn-admin-ev" style="color:var(--danger);border-color:var(--danger);" onclick="deleteEvent(${ev.id})">🗑 Delete</button>` : "")
-            : ""}
+            ? (ev.attendees||[]).includes(uid) ? `<span class="badge-registered">✓ You attended · +${ev.points} pts</span>` : `<span class="badge-absent-event">✗ Not attended</span>`
+            : registered ? `<span class="badge-registered">✓ Registered</span>`
+            : spotsLeft>0 ? `<button class="btn-register" onclick="doRegisterEvent('${fid}',this)">Register for this event</button>`
+            : `<span class="badge-full">Event Full</span>`}
+          ${isAdmin?`<button class="btn-admin-ev" onclick="openEventAdmin('${fid}')">⚙️ Manage</button>${!past?`<button class="btn-admin-ev" style="color:var(--danger);border-color:var(--danger);" onclick="doDeleteEvent('${fid}')">🗑 Delete</button>`:""}` :""}
         </div>
       </div>
     </div>`;
   }).join("");
 }
 
-function registerEvent(eventId){
-  const evts=getEvents(), ev=evts.find(e=>e.id===eventId);
-  if(!ev||ev.registrants.includes(uid)){ return; }
-  if(ev.registrants.length>=ev.capacity){ showToast("⚠️ This event is full","warn"); return; }
-  ev.registrants.push(uid);
-  saveGlobalEvents(evts);
-  checkBadge("team_player",true);
-  saveAll(); renderEvents(); refreshStats();
-  showToast("🎉 Registered for '"+ev.title+"'!");
+async function doRegisterEvent(fid, btn){
+  btn.disabled=true; btn.textContent="Registering...";
+  try {
+    await registerForEvent(fid, uid);
+    const ev=events.find(e=>(e.firestoreId||String(e.id))===fid);
+    checkBadge("team_player", true);
+    showToast("🎉 Registered"+(ev?" for '"+ev.title+"'":"")+"!");
+  } catch(e){ showToast("❌ Failed to register","warn"); btn.disabled=false; btn.textContent="Register"; }
 }
-
-// ---- DELETE EVENT ----
-function deleteEvent(eventId){
+async function doDeleteEvent(fid){
   if(!confirm("Delete this event permanently?")) return;
-  saveGlobalEvents(getEvents().filter(e=>e.id!==eventId));
-  renderEvents(); showToast("🗑 Event deleted.");
+  try { await deleteEvent(fid); showToast("🗑 Event deleted."); }
+  catch(e){ showToast("❌ Error deleting event","warn"); }
 }
 
-// ---- ADD EVENT MODAL ---- (FIX: was missing entirely)
-function openAddEventModal(){
-  document.getElementById("addEventModal").style.display="flex";
-  document.getElementById("addEventForm").reset();
-  document.getElementById("addEventError").textContent="";
-  // Default date = today
-  const today=new Date();
-  document.getElementById("evDay").value=String(today.getDate()).padStart(2,"0");
-  document.getElementById("evMonth").value=today.toLocaleString("en-US",{month:"short"});
-  document.getElementById("evYear").value=today.getFullYear();
-}
+// ---- ADD EVENT ----
+function openAddEventModal(){ document.getElementById("addEventModal").style.display="flex"; document.getElementById("addEventForm").reset(); document.getElementById("addEventError").textContent=""; const t=new Date(); document.getElementById("evDay").value=String(t.getDate()).padStart(2,"0"); document.getElementById("evYear").value=t.getFullYear(); }
 function closeAddEventModal(){ document.getElementById("addEventModal").style.display="none"; }
-
-function submitAddEvent(){
+async function submitAddEvent(){
   const v=id=>document.getElementById(id).value.trim();
-  const title=v("evTitle"),day=v("evDay"),month=v("evMonth"),year=v("evYear"),
-        time=v("evTime"),duration=v("evDuration"),venue=v("evVenue"),
-        capacity=parseInt(v("evCapacity"))||50,
-        category=v("evCategory"),points=parseInt(v("evPoints"))||20,
-        organizer=v("evOrganizer"),description=v("evDescription");
-  const errEl=document.getElementById("addEventError");
-  if(!title||!venue||!description){ errEl.textContent="⚠️ Title, Venue and Description are required."; return; }
-
-  const evts=getEvents();
-  const newId=evts.length ? Math.max(...evts.map(e=>e.id))+1 : 1;
-  evts.push({
-    id:newId, day:day||"01", month:month||"Jan", year:year||new Date().getFullYear(),
-    title, description, venue, time:time||"TBD", duration:duration||"TBD",
-    capacity, category, points, organizer:organizer||currentUser.name,
-    contact:currentUser.email||"—", past:false, registrants:[], attendees:[]
-  });
-  saveGlobalEvents(evts);
-  closeAddEventModal();
-  renderEvents();
-  showToast("✅ Event '"+title+"' created!");
+  const title=v("evTitle"),venue=v("evVenue"),description=v("evDescription");
+  if(!title||!venue||!description){ document.getElementById("addEventError").textContent="⚠️ Title, Venue and Description are required."; return; }
+  const btn=document.querySelector("#addEventForm .btn-primary"); btn.disabled=true; btn.textContent="Creating...";
+  try {
+    await createEvent({ day:v("evDay")||"01", month:v("evMonth")||"Jan", year:v("evYear")||new Date().getFullYear(), title, description, venue, time:v("evTime")||"TBD", duration:v("evDuration")||"TBD", capacity:parseInt(v("evCapacity"))||50, category:v("evCategory"), points:parseInt(v("evPoints"))||20, organizer:v("evOrganizer")||currentUser.name, past:false, registrants:[], attendees:[] });
+    closeAddEventModal(); showToast("✅ Event '"+title+"' created!");
+  } catch(e){ document.getElementById("addEventError").textContent="❌ Error: "+e.message; }
+  btn.disabled=false; btn.textContent="Create Event";
 }
 
-// ---- MANAGE EVENT MODAL ----
-function openEventAdmin(eventId){
-  selectedEventId=eventId;
-  const ev=getEvents().find(e=>e.id===eventId); if(!ev) return;
-  document.getElementById("evAdminTitle").textContent="⚙️ Manage: "+ev.title;
-  document.getElementById("evAdminDate").textContent=ev.day+" "+ev.month+" "+ev.year+" · "+ev.time+" · "+ev.venue;
-  document.querySelectorAll(".ev-tab-btn").forEach((b,i)=>b.classList.toggle("active",i===0));
-  renderEventAdminTabs(ev,"registrants");
-  document.getElementById("evAdminModal").style.display="flex";
-}
-function closeEventAdmin(){ document.getElementById("evAdminModal").style.display="none"; selectedEventId=null; }
-function switchEvTab(tab,btn){
-  document.querySelectorAll(".ev-tab-btn").forEach(b=>b.classList.remove("active"));
-  btn.classList.add("active");
-  const ev=getEvents().find(e=>e.id===selectedEventId); if(!ev) return;
-  renderEventAdminTabs(ev,tab);
-}
-function renderEventAdminTabs(ev,tab){
+// ---- EVENT ADMIN MODAL ----
+let selectedEventFid = null;
+function openEventAdmin(fid){ selectedEventFid=fid; const ev=events.find(e=>(e.firestoreId||String(e.id))===fid); if(!ev) return; document.getElementById("evAdminTitle").textContent="⚙️ Manage: "+ev.title; document.getElementById("evAdminDate").textContent=ev.day+" "+ev.month+" "+ev.year+" · "+ev.time+" · "+ev.venue; document.querySelectorAll(".ev-tab-btn").forEach((b,i)=>b.classList.toggle("active",i===0)); renderEventAdminTabs(ev,"registrants"); document.getElementById("evAdminModal").style.display="flex"; }
+function closeEventAdmin(){ document.getElementById("evAdminModal").style.display="none"; selectedEventFid=null; }
+function switchEvTab(tab,btn){ document.querySelectorAll(".ev-tab-btn").forEach(b=>b.classList.remove("active")); btn.classList.add("active"); const ev=events.find(e=>(e.firestoreId||String(e.id))===selectedEventFid); if(ev) renderEventAdminTabs(ev,tab); }
+async function renderEventAdminTabs(ev,tab){
   const body=document.getElementById("evAdminBody");
-  const members=getAllMembers();
+  const members=await getAllMembers();
+  const regs=ev.registrants||[], atts=ev.attendees||[];
   if(tab==="registrants"){
-    if(!ev.registrants.length){ body.innerHTML=`<p style="color:var(--text3);padding:1rem 0">No registrations yet.</p>`; return; }
-    body.innerHTML=`<p style="font-size:13px;color:var(--text2);margin-bottom:1rem;">${ev.registrants.length} registered · ${ev.attendees.length} attended</p>
+    if(!regs.length){ body.innerHTML=`<p style="color:var(--text3);padding:1rem 0">No registrations yet.</p>`; return; }
+    body.innerHTML=`<p style="font-size:13px;color:var(--text2);margin-bottom:1rem;">${regs.length} registered · ${atts.length} attended</p>
       <table class="data-table"><thead><tr><th>Name</th><th>Student ID</th><th>Dept</th><th>Registered</th><th>Attended</th></tr></thead>
-      <tbody>${ev.registrants.map(rid=>{ const m=members.find(x=>x.id===rid)||{name:"Unknown",id:rid,dept:"—"}; const att=ev.attendees.includes(rid);
-        return `<tr><td><strong>${m.name}</strong></td><td style="font-size:12px;color:var(--text2)">${m.id}</td><td>${m.dept}</td>
-          <td><span class="pill pill-present">✓ Yes</span></td>
-          <td><span class="pill ${att?"pill-present":"pill-absent"}">${att?"✓ Attended":"✗ Absent"}</span></td></tr>`;
+      <tbody>${regs.map(rid=>{ const m=members.find(x=>x.id===rid)||{name:"Unknown",id:rid,dept:"—"}; const att=atts.includes(rid);
+        return `<tr><td><strong>${escHtml(m.name)}</strong></td><td style="font-size:12px;color:var(--text2)">${escHtml(m.id)}</td><td>${escHtml(m.dept)}</td>
+        <td><span class="pill pill-present">✓ Yes</span></td>
+        <td><span class="pill ${att?"pill-present":"pill-absent"}">${att?"✓ Attended":"✗ Absent"}</span></td></tr>`;
       }).join("")}</tbody></table>`;
   } else {
-    if(!ev.registrants.length){ body.innerHTML=`<p style="color:var(--text3);padding:1rem 0">No registrations yet. Members must register first.</p>`; return; }
-    body.innerHTML=`<p style="font-size:13px;color:var(--text2);margin-bottom:1rem;">Check who actually attended. Checking gives <strong>+${ev.points} pts</strong>.</p>
+    if(!regs.length){ body.innerHTML=`<p style="color:var(--text3);padding:1rem 0">No registrations yet.</p>`; return; }
+    body.innerHTML=`<p style="font-size:13px;color:var(--text2);margin-bottom:1rem;">Check attendance. Checking gives <strong>+${ev.points} pts</strong>.</p>
       <table class="data-table"><thead><tr><th>Name</th><th>Student ID</th><th>Dept</th><th>Mark Attendance</th></tr></thead>
-      <tbody>${ev.registrants.map(rid=>{ const m=members.find(x=>x.id===rid)||{name:"Unknown",id:rid,dept:"—"}; const att=ev.attendees.includes(rid);
-        return `<tr><td><strong>${m.name}</strong></td><td style="font-size:12px;color:var(--text2)">${m.id}</td><td>${m.dept}</td>
-          <td><label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-            <input type="checkbox" id="evatt_${rid}" ${att?"checked":""} onchange="toggleEventAttendance(${ev.id},'${rid}',this.checked)" style="width:16px;height:16px;accent-color:var(--success);cursor:pointer;"/>
-            <span style="font-size:13px;color:var(--text2);">${att?"✓ Attended":"Mark as attended"}</span>
-          </label></td></tr>`;
+      <tbody>${regs.map(rid=>{ const m=members.find(x=>x.id===rid)||{name:"Unknown",id:rid,dept:"—"}; const att=atts.includes(rid);
+        const fid=ev.firestoreId||String(ev.id);
+        return `<tr><td><strong>${escHtml(m.name)}</strong></td><td style="font-size:12px;color:var(--text2)">${escHtml(m.id)}</td><td>${escHtml(m.dept)}</td>
+        <td><label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+          <input type="checkbox" id="evatt_${rid}" ${att?"checked":""} onchange="doToggleEventAtt('${fid}','${rid}',this.checked,${ev.points})" style="width:16px;height:16px;accent-color:var(--success);cursor:pointer;"/>
+          <span style="font-size:13px;color:var(--text2);">${att?"✓ Attended":"Mark as attended"}</span>
+        </label></td></tr>`;
       }).join("")}</tbody></table>`;
   }
 }
-function toggleEventAttendance(eventId,memberId,isAttended){
-  const evts=getEvents(), ev=evts.find(e=>e.id===eventId); if(!ev) return;
-  if(isAttended){
-    if(!ev.attendees.includes(memberId)){
-      ev.attendees.push(memberId);
-      const mS=loadData(memberId,"stats",getDefaultStats(memberId));
-      mS.eventsAttended=(mS.eventsAttended||0)+1; mS.points=(mS.points||0)+ev.points;
-      saveData(memberId,"stats",mS); addPointsToLeaderboard(memberId,ev.points);
-      checkBadge_for(memberId,mS.eventsAttended>=3,"event_pro");
+async function doToggleEventAtt(fid, memberId, attended, pts){
+  try {
+    await markEventAttendee(fid, memberId, attended);
+    if(attended){
+      await addPointsToMember(memberId, pts);
+      // Update member stats
+      const mStats = await getStats(memberId);
+      mStats.eventsAttended = (mStats.eventsAttended||0)+1;
+      await saveStats(memberId, mStats);
+    } else {
+      await addPointsToMember(memberId, -pts);
+      const mStats = await getStats(memberId);
+      mStats.eventsAttended = Math.max(0,(mStats.eventsAttended||1)-1);
+      await saveStats(memberId, mStats);
     }
-  } else {
-    ev.attendees=ev.attendees.filter(x=>x!==memberId);
-    const mS=loadData(memberId,"stats",getDefaultStats(memberId));
-    mS.eventsAttended=Math.max(0,(mS.eventsAttended||1)-1); mS.points=Math.max(0,(mS.points||ev.points)-ev.points);
-    saveData(memberId,"stats",mS); addPointsToLeaderboard(memberId,-ev.points);
-  }
-  saveGlobalEvents(evts);
-  const lbl=document.querySelector(`#evatt_${memberId}`)?.parentElement?.querySelector("span");
-  if(lbl) lbl.textContent=isAttended?"✓ Attended":"Mark as attended";
-  refreshStats(); renderLeaderboard();
-  showToast(isAttended?`✅ +${ev.points} pts given to ${memberId}`:`↩ Attendance removed for ${memberId}`);
+    const lbl=document.querySelector(`#evatt_${memberId}`)?.parentElement?.querySelector("span");
+    if(lbl) lbl.textContent=attended?"✓ Attended":"Mark as attended";
+    showToast(attended?`✅ +${pts} pts given to ${memberId}`:`↩ Attendance removed`);
+  } catch(e){ showToast("❌ Error: "+e.message,"warn"); }
 }
 
 // =============================================
-// NOTICES
+// NOTICES — real-time via listener
 // =============================================
+function updateNoticeBadge(){
+  const badge=document.getElementById("noticeBadge");
+  if(badge && notices.length>0){ badge.textContent=Math.min(notices.length,9); badge.style.display=""; }
+}
 function renderNotices(){
   const list=document.getElementById("noticeList"); if(!list) return;
   list.innerHTML=notices.map(n=>`
     <div class="notice-item">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">
         <span class="notice-tag tag-${n.tag}">${{urgent:"🔴 Urgent",general:"🔵 General",event:"🟢 Event"}[n.tag]||n.tag}</span>
-        ${isAdmin?`<button class="btn-delete" onclick="deleteNotice(${n.id})">🗑</button>`:""}
+        ${isAdmin?`<button class="btn-delete" onclick="doDeleteNotice('${n.firestoreId}')">🗑</button>`:""}
       </div>
-      <div class="notice-title">${n.title}</div>
-      <div class="notice-body">${n.body}</div>
-      <div class="notice-date">${n.date} · Posted by ${n.author}</div>
+      <div class="notice-title">${escHtml(n.title)}</div>
+      <div class="notice-body">${escHtml(n.body)}</div>
+      <div class="notice-date">${n.date} · Posted by ${escHtml(n.author)}</div>
     </div>`).join("") || `<p style="color:var(--text3);padding:1rem 0">No notices yet.</p>`;
 }
 function toggleNoticeForm(){ const f=document.getElementById("noticeForm"); f.classList.toggle("open"); if(f.classList.contains("open")) f.scrollIntoView({behavior:"smooth"}); }
-function postNotice(){
+async function postNotice(){
   const title=document.getElementById("noticeTitle").value.trim();
   const tag=document.getElementById("noticeCategory").value;
   const body=document.getElementById("noticeContent").value.trim();
   if(!title||!body){ showToast("⚠️ Fill in title and content","warn"); return; }
-  notices.unshift({id:Date.now(),tag,title,body,date:"Just now",author:currentUser.name});
-  stats.noticesPosted=(stats.noticesPosted||0)+1;
-  addPoints(5); checkBadge("reporter",stats.noticesPosted>=3);
-  const badge=document.getElementById("noticeBadge");
-  if(badge){ badge.textContent=parseInt(badge.textContent||0)+1; badge.style.display=""; }
-  saveAll(); renderNotices();
-  document.getElementById("noticeTitle").value=""; document.getElementById("noticeContent").value="";
-  toggleNoticeForm(); showToast("📢 Notice posted! +5 pts");
-}
-function deleteNotice(id){
-  if(!confirm("Delete this notice?")) return;
-  notices=notices.filter(n=>n.id!==id);
-  localStorage.setItem("uniclub_notices",JSON.stringify(notices));
-  renderNotices(); showToast("🗑 Notice deleted");
-}
-
-// =============================================
-// LEADERBOARD
-// =============================================
-async function renderLeaderboard() {
-  const list = document.getElementById("leaderboardList"); 
-  if (!list) return;
-
   try {
-    const snapshot = await db.collection("leaderboard").get();
-    const lbData = [];
-    snapshot.forEach(doc => lbData.push(doc.data()));
-
-    // Sort by points highest to lowest
-    lbData.sort((a, b) => (b.points || 0) - (a.points || 0));
-
-    list.innerHTML = lbData.map((e, idx) => {
-      const rank = idx + 1, isYou = e.id === uid;
-      const rc = rank === 1 ? "gold" : rank === 2 ? "silver" : rank === 3 ? "bronze" : "";
-      
-      return `<div class="lb-item ${isYou ? "lb-you" : ""}">
-        <span class="lb-rank ${rc}">${rank}</span>
-        <div class="lb-avatar" style="background:${e.bgColor || '#cfe2ff'};color:${e.txtColor || '#0a3980'}">${e.initials || '??'}</div>
-        <div class="lb-name">${e.name}${isYou ? ` <span class="you-tag">You</span>` : ""}</div>
-        <span class="lb-badges">${e.badges || 0} badge${e.badges !== 1 ? "s" : ""}</span>
-        <div class="lb-score">${e.points || 0} pts</div>
-      </div>`;
-    }).join("");
-  } catch (err) {
-    console.error("Error loading leaderboard:", err);
-  }
+    await addNotice({ tag, title, body, date:"Just now", author:currentUser.name });
+    stats.noticesPosted=(stats.noticesPosted||0)+1;
+    await addPointsToMember(uid,5);
+    await saveStats(uid, stats);
+    checkBadge("reporter", stats.noticesPosted>=3);
+    document.getElementById("noticeTitle").value="";
+    document.getElementById("noticeContent").value="";
+    toggleNoticeForm();
+    showToast("📢 Notice posted! +5 pts");
+  } catch(e){ showToast("❌ Error posting notice","warn"); }
+}
+async function doDeleteNotice(fid){
+  if(!confirm("Delete this notice?")) return;
+  try { await fbDeleteNotice(fid); showToast("🗑 Notice deleted"); }
+  catch(e){ showToast("❌ Error deleting notice","warn"); }
 }
 
 // =============================================
-// PROFILE + PROFILE PICTURE
+// LEADERBOARD — updates via real-time listener
 // =============================================
-function renderProfile(){
-  setAvatar("profileAvatarEl", uid, currentUser.initials);
-  document.getElementById("profileName").textContent=currentUser.name;
-  document.getElementById("profileEmail").textContent=currentUser.email;
-  document.getElementById("profileDept").textContent=currentUser.dept;
+function renderLeaderboard(){
+  const list=document.getElementById("leaderboardList"); if(!list) return;
+  list.innerHTML=leaderboard.map((e,idx)=>{
+    const rank=idx+1, isYou=e.id===uid;
+    const rc=rank===1?"gold":rank===2?"silver":rank===3?"bronze":"";
+    return `<div class="lb-item ${isYou?"lb-you":""}">
+      <span class="lb-rank ${rc}">${rank}</span>
+      <div class="lb-avatar" style="background:${e.bgColor||"#e9ecef"};color:${e.txtColor||"#495057"}">${e.initials}</div>
+      <div class="lb-name">${escHtml(e.name)}${isYou?` <span class="you-tag">You</span>`:""}</div>
+      <span class="lb-badges">${e.badges||0} badge${(e.badges||0)!==1?"s":""}</span>
+      <div class="lb-score">${e.points||0} pts</div>
+    </div>`;
+  }).join("") || `<p style="color:var(--text3);">Loading rankings...</p>`;
+}
+
+// =============================================
+// PROFILE + PICTURE
+// =============================================
+async function renderProfile(){
+  const pic = await loadProfilePic(uid);
+  setAvatarEl("profileAvatarEl", pic, currentUser.initials);
+  document.getElementById("profileName").textContent = currentUser.name;
+  document.getElementById("profileEmail").textContent = currentUser.email;
+  document.getElementById("profileDept").textContent = currentUser.dept;
   const rb=document.getElementById("profileRoleBadge");
   rb.textContent=isAdmin?"Admin":"Active Member";
   if(isAdmin) rb.classList.add("admin");
-  document.getElementById("pstatAttendance").textContent=stats.attendanceRate+"%";
-  document.getElementById("pstatEvents").textContent=stats.eventsAttended;
-  document.getElementById("pstatPoints").textContent=stats.points;
-  document.getElementById("pstatRank").textContent="#"+getUserRank(uid);
+  renderProfileStats();
   renderProfileBadges();
+}
+function renderProfileStats(){
+  document.getElementById("pstatAttendance").textContent=(stats.attendanceRate||0)+"%";
+  document.getElementById("pstatEvents").textContent=stats.eventsAttended||0;
+  document.getElementById("pstatPoints").textContent=stats.points||0;
+  const rank=leaderboard.findIndex(e=>e.id===uid);
+  document.getElementById("pstatRank").textContent=rank>=0?"#"+(rank+1):"—";
 }
 function renderProfileBadges(){
   const g=document.getElementById("profileBadgeGrid"); if(!g) return;
-  g.innerHTML=badges.map(b=>`<div class="badge-item ${b.earned?"earned":""}" title="${b.desc}"><div class="badge-icon">${b.icon}</div><div class="badge-name">${b.name}</div>${!b.earned?'<div class="badge-locked">🔒</div>':""}</div>`).join("");
+  g.innerHTML=badges.map(b=>`<div class="badge-item ${b.earned?"earned":""}" title="${escHtml(b.desc||"")}"><div class="badge-icon">${b.icon}</div><div class="badge-name">${escHtml(b.name)}</div>${!b.earned?'<div class="badge-locked">🔒</div>':""}</div>`).join("");
 }
 function triggerProfilePicUpload(){ document.getElementById("profilePicInput").click(); }
 function handleProfilePicChange(input){
   const file=input.files[0]; if(!file) return;
   if(file.size>2*1024*1024){ showToast("⚠️ Image too large. Max 2MB.","warn"); return; }
   const reader=new FileReader();
-  reader.onload=e=>{ saveProfilePic(uid,e.target.result); setAvatar("profileAvatarEl",uid,currentUser.initials); setAvatar("sidebarAvatar",uid,currentUser.initials); showToast("🖼️ Profile picture updated!"); };
+  reader.onload=async e=>{
+    try {
+      await saveProfilePic(uid, e.target.result);
+      setAvatarEl("profileAvatarEl", e.target.result, currentUser.initials);
+      setAvatarEl("sidebarAvatar", e.target.result, currentUser.initials);
+      showToast("🖼️ Profile picture updated!");
+    } catch(err){ showToast("❌ Error saving picture","warn"); }
+  };
   reader.readAsDataURL(file);
 }
 
 // =============================================
-// CHANGE PASSWORD — NEW FEATURE
+// CHANGE PASSWORD
 // =============================================
-function openChangePwModal(){
-  document.getElementById("changePwModal").style.display="flex";
-  document.getElementById("changePwForm").reset();
-  document.getElementById("changePwError").textContent="";
-  document.getElementById("changePwSuccess").style.display="none";
-}
+function openChangePwModal(){ document.getElementById("changePwModal").style.display="flex"; document.getElementById("changePwForm").reset(); document.getElementById("changePwError").textContent=""; document.getElementById("changePwSuccess").style.display="none"; }
 function closeChangePwModal(){ document.getElementById("changePwModal").style.display="none"; }
-function submitChangePassword(){
+async function submitChangePassword(){
   const curr=document.getElementById("pwCurrent").value;
   const newPw=document.getElementById("pwNew").value;
   const conf=document.getElementById("pwConfirm").value;
   const errEl=document.getElementById("changePwError");
   const okEl=document.getElementById("changePwSuccess");
   errEl.textContent=""; okEl.style.display="none";
-
-  // Verify current password
-  const userRecord=findUser(uid,curr);
+  const userRecord = await findUser(uid, curr);
   if(!userRecord){ errEl.textContent="⚠️ Current password is incorrect."; return; }
   if(newPw.length<6){ errEl.textContent="⚠️ New password must be at least 6 characters."; return; }
   if(newPw!==conf){ errEl.textContent="⚠️ New passwords do not match."; return; }
-
-  // Update in member list
-  const members=getAllMembers();
-  const m=members.find(x=>x.id===uid);
-  if(m){ m.password=newPw; saveAllMembers(members); }
-  okEl.style.display="block";
-  document.getElementById("changePwForm").reset();
-  setTimeout(closeChangePwModal, 1800);
-  showToast("🔒 Password changed successfully!");
+  try {
+    await changePassword(uid, newPw);
+    okEl.style.display="block";
+    document.getElementById("changePwForm").reset();
+    setTimeout(closeChangePwModal, 1800);
+    showToast("🔒 Password changed successfully!");
+  } catch(e){ errEl.textContent="❌ Error: "+e.message; }
 }
 
 // =============================================
 // RESEARCH FEATURES
 // =============================================
-function getResearchData(){
-  const raw=localStorage.getItem("uniclub_research");
-  if(raw) return JSON.parse(raw);
-  const def={
-    papers:[
-      {id:1,title:"Machine Learning in Climate Prediction",authors:"Nadia Khan, Arif Rahman",link:"https://ieeexplore.ieee.org/",year:2025,tags:["ML","Climate"],addedBy:"Nadia Khan",addedById:"2023-CS-010",date:"Mar 10",pdfData:null,pdfName:null},
-      {id:2,title:"Federated Learning for Privacy-Preserving Healthcare",authors:"Tanvir Chowdhury",link:"https://www.nature.com/",year:2024,tags:["Federated Learning","Healthcare"],addedBy:"Tanvir Chowdhury",addedById:"2024-ME-007",date:"Feb 22",pdfData:null,pdfName:null},
-      {id:3,title:"Graph Neural Networks: A Review",authors:"Fatima Begum, Sadia Ferdousi",link:"https://dl.acm.org/",year:2024,tags:["GNN","Survey"],addedBy:"Fatima Begum",addedById:"2024-EEE-015",date:"Jan 15",pdfData:null,pdfName:null}
-    ],
-    teams:[
-      {id:1,name:"NLP Research Group",lead:"Nadia Khan",members:["2023-CS-010","member","2024-CS-042"],topic:"Bangla NLP & Sentiment Analysis",status:"Active"},
-      {id:2,name:"Computer Vision Lab",lead:"Tanvir Chowdhury",members:["2024-ME-007","2024-EEE-015"],topic:"Medical Image Segmentation",status:"Active"},
-      {id:3,name:"Data Science Team",lead:"Fatima Begum",members:["2024-EEE-015","2023-BA-019"],topic:"Predictive Analytics for Education",status:"Forming"}
-    ],
-    mentors:[
-      {id:1,name:"Dr. Asif Mahmud",title:"Club Supervisor",dept:"CS Dept",expertise:"Machine Learning, Deep Learning",email:"asif@university.edu",available:true},
-      {id:2,name:"Dr. Rina Begum",title:"External Mentor",dept:"EEE Dept",expertise:"Signal Processing, Embedded Systems",email:"rina@university.edu",available:true},
-      {id:3,name:"Mr. Karim Hassan",title:"Industry Mentor",dept:"Google Bangladesh",expertise:"MLOps, Cloud Computing",email:"karim@google.com",available:false}
-    ],
-    seminars:[
-      {id:1,title:"Introduction to Transformer Models",speaker:"Dr. Asif Mahmud",date:"Mar 15, 2026",duration:"90 min",attendees:["member","2024-CS-042","2023-CS-010"],notes:"Covered BERT, GPT architecture. Slides shared on drive."},
-      {id:2,title:"Research Methodology & Academic Writing",speaker:"Dr. Rina Begum",date:"Feb 28, 2026",duration:"2 hours",attendees:["member","2024-EEE-015","2023-BA-019"],notes:"Focus on paper structure, citation formats, avoiding plagiarism."}
-    ]
-  };
-  localStorage.setItem("uniclub_research",JSON.stringify(def));
-  return def;
-}
-function saveResearchData(data){ localStorage.setItem("uniclub_research",JSON.stringify(data)); }
-
-function renderResearch(){
-  renderPapers(); renderTeams(); renderMentors(); renderSeminars();
+async function renderResearch(){
+  await Promise.all([renderPapers(), renderTeams(), renderMentors(), renderSeminars()]);
 }
 
 // -- Papers --
-// Holds the selected PDF as base64 while the form is open
-let _pendingPdfData = null;
-let _pendingPdfName = null;
-
-function renderPapers(){
+async function renderPapers(){
   const el=document.getElementById("paperList"); if(!el) return;
-  const papers=getResearchData().papers;
-  if(!papers.length){ el.innerHTML=`<p style="color:var(--text3);padding:1rem 0">No papers added yet. Be the first to share one!</p>`; return; }
-  el.innerHTML=papers.map(p=>`
-    <div class="paper-card">
-      <div class="paper-title">${p.title}</div>
-      <div class="paper-authors">👥 ${p.authors}</div>
-      <div class="paper-meta">
-        <span>📅 ${p.year}</span>
-        ${p.link?`<a href="${escHtml(p.link)}" target="_blank" rel="noopener" class="doi-link">🔗 View Paper / Reference</a>`:""}
-        ${p.pdfData?`<button class="doi-link" style="background:none;border:none;cursor:pointer;padding:0;font-size:13px;" onclick="downloadPdf(${p.id})">📥 Download PDF</button>`:""}
-      </div>
-      ${p.tags&&p.tags.length?`<div class="paper-tags">${p.tags.map(t=>`<span class="paper-tag">${escHtml(t)}</span>`).join("")}</div>`:""}
-      <div class="paper-footer">
-        Added by ${escHtml(p.addedBy)} · ${p.date}
-        ${(isAdmin||p.addedById===uid)?`<button class="btn-delete" style="margin-left:auto;" onclick="deletePaper(${p.id})">🗑</button>`:""}
-      </div>
-    </div>`).join("");
+  el.innerHTML=`<p style="color:var(--text3);">Loading papers...</p>`;
+  try {
+    const papers=await getPapers();
+    if(!papers.length){ el.innerHTML=`<p style="color:var(--text3);padding:1rem 0">No papers added yet. Be the first!</p>`; return; }
+    el.innerHTML=papers.map(p=>`
+      <div class="paper-card">
+        <div class="paper-title">${escHtml(p.title)}</div>
+        <div class="paper-authors">👥 ${escHtml(p.authors)}</div>
+        <div class="paper-meta">
+          <span>📅 ${p.year}</span>
+          ${p.link?`<a href="${escHtml(p.link)}" target="_blank" rel="noopener" class="doi-link">🔗 View Paper / Reference</a>`:""}
+          ${p.pdfData?`<button class="doi-link" style="background:none;border:none;cursor:pointer;padding:0;font-size:13px;" onclick="downloadPdf('${p.firestoreId}')">📥 Download PDF</button>`:""}
+        </div>
+        ${p.tags&&p.tags.length?`<div class="paper-tags">${p.tags.map(t=>`<span class="paper-tag">${escHtml(t)}</span>`).join("")}</div>`:""}
+        <div class="paper-footer">Added by ${escHtml(p.addedBy)} · ${p.date}
+          ${(isAdmin||p.addedById===uid)?`<button class="btn-delete" style="margin-left:auto;" onclick="doDeletePaper('${p.firestoreId}')">🗑</button>`:""}
+        </div>
+      </div>`).join("");
+  } catch(e){ el.innerHTML=`<p style="color:var(--danger);">Error loading papers.</p>`; }
 }
 
-function escHtml(str){ return String(str||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+let _paperCache = [];
+async function downloadPdf(fid){
+  const papers=await getPapers();
+  const p=papers.find(x=>x.firestoreId===fid);
+  if(!p||!p.pdfData){ showToast("No PDF attached.","warn"); return; }
+  const a=document.createElement("a"); a.href=p.pdfData; a.download=p.pdfName||"paper.pdf";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
 
 function handlePdfSelect(input){
-  const file=input.files[0];
-  if(!file) return;
+  const file=input.files[0]; if(!file) return;
   if(file.size>5*1024*1024){ showToast("⚠️ PDF too large. Max 5MB.","warn"); input.value=""; return; }
   const label=document.getElementById("pdfUploadLabel");
   label.textContent="⏳ Reading PDF...";
   const reader=new FileReader();
   reader.onload=e=>{
-    _pendingPdfData=e.target.result; // base64 data URL
-    _pendingPdfName=file.name;
-    label.textContent="✅ "+file.name+" ("+Math.round(file.size/1024)+" KB) — click to change";
+    _pendingPdfData=e.target.result; _pendingPdfName=file.name;
+    label.textContent="✅ "+file.name+" ("+Math.round(file.size/1024)+" KB)";
     document.getElementById("pdfUploadArea").style.borderColor="var(--success)";
   };
   reader.readAsDataURL(file);
 }
 
-function downloadPdf(paperId){
-  const p=getResearchData().papers.find(x=>x.id===paperId);
-  if(!p||!p.pdfData){ showToast("No PDF attached to this paper.","warn"); return; }
-  const a=document.createElement("a");
-  a.href=p.pdfData;
-  a.download=p.pdfName||p.title.replace(/[^a-z0-9]/gi,"_")+".pdf";
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-}
-
 function togglePaperForm(){
   const f=document.getElementById("paperForm"); f.classList.toggle("open");
   if(!f.classList.contains("open")){
-    // Reset PDF state when closing
     _pendingPdfData=null; _pendingPdfName=null;
-    const label=document.getElementById("pdfUploadLabel");
-    if(label) label.textContent="📎 Click to attach PDF file";
-    const area=document.getElementById("pdfUploadArea");
-    if(area) area.style.borderColor="";
+    const lbl=document.getElementById("pdfUploadLabel"); if(lbl) lbl.textContent="📎 Click to attach a PDF file";
+    const area=document.getElementById("pdfUploadArea"); if(area) area.style.borderColor="";
   }
 }
 
-function submitPaper(){
+async function submitPaper(){
   const v=id=>document.getElementById(id).value.trim();
-  const title=v("paperTitle"),authors=v("paperAuthors"),link=v("paperLink"),year=v("paperYear"),tags=v("paperTags");
-  if(!title||!authors){ showToast("⚠️ Title and authors are required","warn"); return; }
-  const data=getResearchData();
-  const newId=data.papers.length?Math.max(...data.papers.map(p=>p.id))+1:1;
-  const newPaper={
-    id:newId, title, authors,
-    link: link||"",
-    year: parseInt(year)||new Date().getFullYear(),
-    tags: tags?tags.split(",").map(t=>t.trim()).filter(Boolean):[],
-    addedBy: currentUser.name,
-    addedById: uid,
-    date: new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"short"}),
-    pdfData: _pendingPdfData||null,
-    pdfName: _pendingPdfName||null
-  };
-  data.papers.unshift(newPaper);
-  saveResearchData(data);
-  // Reset form
-  togglePaperForm();
-  document.getElementById("paperForm").querySelectorAll("input,textarea").forEach(i=>i.value="");
-  document.getElementById("paperPdfInput").value="";
-  renderPapers(); addPoints(10); showToast("📄 Paper added to library! +10 pts");
+  const title=v("paperTitle"),authors=v("paperAuthors");
+  if(!title||!authors){ showToast("⚠️ Title and authors required","warn"); return; }
+  const btn=document.querySelector("#paperForm .btn-primary"); btn.disabled=true; btn.textContent="Adding...";
+  try {
+    await addPaper({
+      title, authors, link:v("paperLink"), year:parseInt(v("paperYear"))||new Date().getFullYear(),
+      tags:v("paperTags")?v("paperTags").split(",").map(t=>t.trim()).filter(Boolean):[],
+      addedBy:currentUser.name, addedById:uid,
+      date:new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"short"}),
+      pdfData:_pendingPdfData||null, pdfName:_pendingPdfName||null
+    });
+    togglePaperForm();
+    document.getElementById("paperForm").querySelectorAll("input,textarea").forEach(i=>i.value="");
+    document.getElementById("paperPdfInput").value="";
+    await renderPapers();
+    await addPointsToMember(uid, 10);
+    stats.points=(stats.points||0)+10;
+    showToast("📄 Paper added! +10 pts");
+  } catch(e){ showToast("❌ Error: "+e.message,"warn"); }
+  btn.disabled=false; btn.textContent="Add to Library";
 }
 
-function deletePaper(id){
-  if(!confirm("Remove this paper from the library?")) return;
-  const d=getResearchData(); d.papers=d.papers.filter(p=>p.id!==id);
-  saveResearchData(d); renderPapers(); showToast("🗑 Paper removed.");
+async function doDeletePaper(fid){
+  if(!confirm("Remove this paper?")) return;
+  try { await fbDeletePaper(fid); await renderPapers(); showToast("🗑 Paper removed."); }
+  catch(e){ showToast("❌ Error removing paper","warn"); }
 }
 
 // -- Teams --
-async function renderTeams() { // ADD ASYNC
-  const container = document.getElementById("projectTeamsList");
-  if (!container) return;
-
-  const teams = getTeams(); 
-  
-  // Fetch cloud members so .find works
-  const snapshot = await db.collection("members").get();
-  const membersList = [];
-  snapshot.forEach(doc => membersList.push(doc.data()));
-
-  container.innerHTML = teams.map(t => {
-    const membersHTML = t.members.map(mId => {
-      // Use membersList (the array) instead of members (the function)
-      const m = membersList.find(x => x.id === mId); 
-      return `<span class="team-member-tag" title="${m ? m.name : 'Unknown'}">${m ? m.initials : '??'}</span>`;
-    }).join("");
-
-    return `
-      <div class="team-card">
-        <div class="team-card-header">
-          <div class="team-badge">${t.category}</div>
-          <h4>${t.name}</h4>
+async function renderTeams(){
+  const el=document.getElementById("teamList"); if(!el) return;
+  el.innerHTML=`<p style="color:var(--text3);">Loading teams...</p>`;
+  try {
+    const teams=await getTeams(), members=await getAllMembers();
+    el.innerHTML=teams.map(t=>{
+      const isMember=(t.members||[]).includes(uid);
+      const memberNames=(t.members||[]).map(id=>{ const m=members.find(x=>x.id===id); return m?m.name:id; });
+      return `<div class="team-card">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+          <div class="team-name">${escHtml(t.name)}</div>
+          <span class="team-status ${t.status==="Active"?"status-active":"status-forming"}">${t.status}</span>
         </div>
-        <p>${t.desc}</p>
-        <div class="team-footer">
-          <div class="team-members">${membersHTML}</div>
-          <button class="btn-sm" onclick="alert('Join request sent for ${t.name}')">Join</button>
+        <div class="team-topic">🔬 ${escHtml(t.topic)}</div>
+        <div class="team-lead">👑 Lead: <strong>${escHtml(t.lead)}</strong></div>
+        <div class="team-members">👥 ${escHtml(memberNames.join(", "))}</div>
+        <div style="margin-top:.75rem;display:flex;gap:8px;flex-wrap:wrap;">
+          ${isMember?`<span class="badge-registered" style="font-size:12px;">✓ You're in this team</span>`:`<button class="btn-register" style="font-size:12px;padding:5px 14px;" onclick="doJoinTeam('${t.firestoreId}')">Join Team</button>`}
+          ${isAdmin?`<button class="btn-admin-ev" onclick="doDeleteTeam('${t.firestoreId}')">🗑 Remove</button>`:""}
         </div>
-      </div>
-    `;
-  }).join("");
-}
-function joinTeam(teamId){
-  const d=getResearchData(), t=d.teams.find(x=>x.id===teamId); if(!t||t.members.includes(uid)) return;
-  t.members.push(uid); saveResearchData(d); renderTeams();
-  showToast("🤝 You joined '"+t.name+"'!");
+      </div>`;
+    }).join("") || `<p style="color:var(--text3);">No teams yet.</p>`;
+  } catch(e){ el.innerHTML=`<p style="color:var(--danger);">Error loading teams.</p>`; }
 }
 function toggleTeamForm(){ document.getElementById("teamForm").classList.toggle("open"); }
-function submitTeam(){
+async function submitTeam(){
   const v=id=>document.getElementById(id).value.trim();
-  const name=v("teamName"),topic=v("teamTopic"),lead=v("teamLead"),status=v("teamStatus");
+  const name=v("teamName"),topic=v("teamTopic");
   if(!name||!topic){ showToast("⚠️ Name and topic required","warn"); return; }
-  const d=getResearchData();
-  const newId=d.teams.length?Math.max(...d.teams.map(t=>t.id))+1:1;
-  d.teams.push({id:newId,name,lead:lead||currentUser.name,members:[uid],topic,status});
-  saveResearchData(d); document.getElementById("teamForm").classList.remove("open");
-  document.getElementById("teamForm").querySelectorAll("input,select").forEach(i=>i.value="");
-  renderTeams(); showToast("🔬 Team '"+name+"' created!");
+  try { await addTeam({ name, lead:v("teamLead")||currentUser.name, members:[uid], topic, status:v("teamStatus")||"Forming" }); document.getElementById("teamForm").classList.remove("open"); document.getElementById("teamForm").querySelectorAll("input,select").forEach(i=>i.value=""); await renderTeams(); showToast("🔬 Team created!"); }
+  catch(e){ showToast("❌ Error: "+e.message,"warn"); }
 }
-function deleteTeam(id){ if(!confirm("Delete this team?")) return; const d=getResearchData(); d.teams=d.teams.filter(t=>t.id!==id); saveResearchData(d); renderTeams(); }
+async function doJoinTeam(fid){ try { await fbJoinTeam(fid,uid); await renderTeams(); showToast("🤝 Joined team!"); } catch(e){ showToast("❌ Error joining team","warn"); } }
+async function doDeleteTeam(fid){ if(!confirm("Delete this team?")) return; try { await fbDeleteTeam(fid); await renderTeams(); } catch(e){ showToast("❌ Error","warn"); } }
 
 // -- Mentors --
-function renderMentors(){
+async function renderMentors(){
   const el=document.getElementById("mentorList"); if(!el) return;
-  el.innerHTML=getResearchData().mentors.map(m=>`
-    <div class="mentor-card">
-      <div class="mentor-avatar">${m.name.split(" ").map(w=>w[0]).join("").slice(0,2)}</div>
-      <div class="mentor-info">
-        <div class="mentor-name">${m.name}</div>
-        <div class="mentor-title">${m.title} · ${m.dept}</div>
-        <div class="mentor-expertise">💡 ${m.expertise}</div>
-        <div style="display:flex;align-items:center;gap:10px;margin-top:.5rem;flex-wrap:wrap;">
-          <span class="pill ${m.available?"pill-present":"pill-absent"}" style="font-size:11px;">${m.available?"✓ Available":"✗ Busy"}</span>
-          <a href="mailto:${m.email}" class="doi-link">📧 Contact</a>
-          ${isAdmin?`<button class="btn-delete" onclick="deleteMentor(${m.id})">🗑</button>`:""}
+  try {
+    const mentors=await getMentors();
+    el.innerHTML=mentors.map(m=>`
+      <div class="mentor-card">
+        <div class="mentor-avatar">${(m.name||"??").split(" ").map(w=>w[0]).join("").slice(0,2)}</div>
+        <div class="mentor-info">
+          <div class="mentor-name">${escHtml(m.name)}</div>
+          <div class="mentor-title">${escHtml(m.title)} · ${escHtml(m.dept)}</div>
+          <div class="mentor-expertise">💡 ${escHtml(m.expertise)}</div>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:.5rem;flex-wrap:wrap;">
+            <span class="pill ${m.available?"pill-present":"pill-absent"}" style="font-size:11px;">${m.available?"✓ Available":"✗ Busy"}</span>
+            <a href="mailto:${escHtml(m.email)}" class="doi-link">📧 Contact</a>
+            ${isAdmin?`<button class="btn-delete" onclick="doDeleteMentor('${m.firestoreId}')">🗑</button>`:""}
+          </div>
         </div>
-      </div>
-    </div>`).join("") || `<p style="color:var(--text3);">No mentors listed.</p>`;
+      </div>`).join("") || `<p style="color:var(--text3);">No mentors listed.</p>`;
+  } catch(e){ el.innerHTML=`<p style="color:var(--danger);">Error loading mentors.</p>`; }
 }
 function toggleMentorForm(){ document.getElementById("mentorForm").classList.toggle("open"); }
-function submitMentor(){
+async function submitMentor(){
   const v=id=>document.getElementById(id).value.trim();
-  const name=v("mentorName"),title=v("mentorTitle"),dept=v("mentorDept"),expertise=v("mentorExpertise"),email=v("mentorEmail");
+  const name=v("mentorName"),expertise=v("mentorExpertise");
   if(!name||!expertise){ showToast("⚠️ Name and expertise required","warn"); return; }
-  const d=getResearchData();
-  const newId=d.mentors.length?Math.max(...d.mentors.map(m=>m.id))+1:1;
-  d.mentors.push({id:newId,name,title:title||"Mentor",dept:dept||"—",expertise,email:email||"—",available:true});
-  saveResearchData(d); document.getElementById("mentorForm").classList.remove("open");
-  document.getElementById("mentorForm").querySelectorAll("input").forEach(i=>i.value="");
-  renderMentors(); showToast("👨‍🏫 Mentor '"+name+"' added!");
+  try { await addMentor({ name, title:v("mentorTitle")||"Mentor", dept:v("mentorDept")||"—", expertise, email:v("mentorEmail")||"—", available:true }); document.getElementById("mentorForm").classList.remove("open"); document.getElementById("mentorForm").querySelectorAll("input").forEach(i=>i.value=""); await renderMentors(); showToast("👨‍🏫 Mentor added!"); }
+  catch(e){ showToast("❌ Error: "+e.message,"warn"); }
 }
-function deleteMentor(id){ if(!confirm("Remove this mentor?")) return; const d=getResearchData(); d.mentors=d.mentors.filter(m=>m.id!==id); saveResearchData(d); renderMentors(); }
+async function doDeleteMentor(fid){ if(!confirm("Remove this mentor?")) return; try { await fbDeleteMentor(fid); await renderMentors(); } catch(e){ showToast("❌ Error","warn"); } }
 
 // -- Seminars --
-function renderSeminars(){
+async function renderSeminars(){
   const el=document.getElementById("seminarList"); if(!el) return;
-  const members=getAllMembers();
-  el.innerHTML=getResearchData().seminars.map(s=>{
-    const attended=s.attendees.includes(uid);
-    const attNames=s.attendees.map(id=>{ const m=members.find(x=>x.id===id); return m?m.name.split(" ")[0]:id; });
-    return `<div class="seminar-card">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;">
-        <div>
-          <div class="seminar-title">${s.title}</div>
-          <div class="seminar-meta">🎤 ${s.speaker} · 📅 ${s.date} · ⏱ ${s.duration}</div>
+  try {
+    const seminars=await getSeminars(), members=await getAllMembers();
+    el.innerHTML=seminars.map(s=>{
+      const attended=(s.attendees||[]).includes(uid);
+      const attNames=(s.attendees||[]).map(id=>{ const m=members.find(x=>x.id===id); return m?m.name.split(" ")[0]:id; });
+      return `<div class="seminar-card">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;">
+          <div>
+            <div class="seminar-title">${escHtml(s.title)}</div>
+            <div class="seminar-meta">🎤 ${escHtml(s.speaker)} · 📅 ${escHtml(s.date)} · ⏱ ${escHtml(s.duration)}</div>
+          </div>
+          <span class="pill ${attended?"pill-present":"pill-absent"}" style="flex-shrink:0;">${attended?"✓ Attended":"✗ Not attended"}</span>
         </div>
-        <span class="pill ${attended?"pill-present":"pill-absent"}" style="flex-shrink:0;">${attended?"✓ Attended":"✗ Not attended"}</span>
-      </div>
-      ${s.notes?`<div class="seminar-notes">📝 ${s.notes}</div>`:""}
-      <div class="seminar-footer">Attendees: ${attNames.join(", ")}
-        ${isAdmin?`<button class="btn-admin-ev" style="margin-left:auto;" onclick="deleteSeminar(${s.id})">🗑 Delete</button>`:""}
-      </div>
-    </div>`;
-  }).join("") || `<p style="color:var(--text3);">No seminars recorded yet.</p>`;
+        ${s.notes?`<div class="seminar-notes">📝 ${escHtml(s.notes)}</div>`:""}
+        <div class="seminar-footer">Attendees: ${escHtml(attNames.join(", "))||"None yet"}
+          ${isAdmin?`<button class="btn-admin-ev" style="margin-left:auto;" onclick="doDeleteSeminar('${s.firestoreId}')">🗑 Delete</button>`:""}
+        </div>
+      </div>`;
+    }).join("") || `<p style="color:var(--text3);">No seminars recorded yet.</p>`;
+  } catch(e){ el.innerHTML=`<p style="color:var(--danger);">Error loading seminars.</p>`; }
 }
 function toggleSeminarForm(){ document.getElementById("seminarForm").classList.toggle("open"); }
-function submitSeminar(){
+async function submitSeminar(){
   const v=id=>document.getElementById(id).value.trim();
-  const title=v("semTitle"),speaker=v("semSpeaker"),date=v("semDate"),duration=v("semDuration"),notes=v("semNotes");
+  const title=v("semTitle"),speaker=v("semSpeaker");
   if(!title||!speaker){ showToast("⚠️ Title and speaker required","warn"); return; }
-  const d=getResearchData();
-  const newId=d.seminars.length?Math.max(...d.seminars.map(s=>s.id))+1:1;
-  d.seminars.unshift({id:newId,title,speaker,date:date||new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}),duration:duration||"—",attendees:[],notes});
-  saveResearchData(d); document.getElementById("seminarForm").classList.remove("open");
-  document.getElementById("seminarForm").querySelectorAll("input,textarea").forEach(i=>i.value="");
-  renderSeminars(); showToast("🎓 Seminar '"+title+"' added!");
+  try { await addSeminar({ title, speaker, date:v("semDate")||new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}), duration:v("semDuration")||"—", notes:v("semNotes"), attendees:[] }); document.getElementById("seminarForm").classList.remove("open"); document.getElementById("seminarForm").querySelectorAll("input,textarea").forEach(i=>i.value=""); await renderSeminars(); showToast("🎓 Seminar added!"); }
+  catch(e){ showToast("❌ Error: "+e.message,"warn"); }
 }
-function deleteSeminar(id){ if(!confirm("Delete this seminar record?")) return; const d=getResearchData(); d.seminars=d.seminars.filter(s=>s.id!==id); saveResearchData(d); renderSeminars(); }
+async function doDeleteSeminar(fid){ if(!confirm("Delete this seminar?")) return; try { await fbDeleteSeminar(fid); await renderSeminars(); } catch(e){ showToast("❌ Error","warn"); } }
 
 // =============================================
 // ADMIN
 // =============================================
-// =============================================
-// ADMIN
-// =============================================
-// =============================================
-// ADMIN
-// =============================================
-async function renderAdmin() {
-  // Identify the container (matches ID in dashboard.html)
-  const container = document.getElementById("adminMemberTbody"); 
-  
-  if (!container) {
-    console.error("Error: Could not find table body with ID 'adminMemberTbody'");
-    return;
-  }
-
-  try {
-    // Fetch the latest members from Cloud
-    const snapshot = await db.collection("members").get();
-    const cloudMembers = [];
-    snapshot.forEach(doc => cloudMembers.push(doc.data()));
-
-    // Clear the "Loading..." or old rows
-    container.innerHTML = "";
-
-    // Loop and Create Rows
-    cloudMembers.forEach(m => {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>
-          <div class="user-info">
-            <div class="user-avatar" style="background:#cfe2ff;color:#0a3980">${m.initials || "??"}</div>
-            <div>
-              <div class="user-name">${m.name}</div>
-              <div class="user-id">${m.id}</div>
-            </div>
-          </div>
-        </td>
-        <td>${m.dept || "N/A"}</td>
-        <td><span class="badge badge-success">${m.status || "active"}</span></td>
-        <td><button class="btn-outline" onclick="alert('Profile: ${m.name}')">View</button></td>
-      `;
-      container.appendChild(tr);
-    });
-    console.log("Admin list rendered with " + cloudMembers.length + " members.");
-  } catch (err) {
-    console.error("Cloud Fetch Error:", err);
-  }
-} // Function now correctly closes here
-
-async function handleRemoveMember(memberId) {
-  if (confirm("Are you sure you want to remove this member from the Cloud?")) {
-    await db.collection("members").doc(memberId).delete();
-    await db.collection("leaderboard").doc(memberId).delete();
-    alert("Member removed.");
-    renderMemberTable(); // Refresh the list
-  }
+async function renderAdmin(){
+  await renderMemberTable();
+  await updateAdminStats();
 }
-async function renderMemberTable() { // Added async
-  const tbody = document.getElementById("adminMemberTbody"); 
-  if (!tbody) return;
-
+async function renderMemberTable(){
+  const tbody=document.getElementById("adminMemberTbody"); if(!tbody) return;
+  tbody.innerHTML=`<tr><td colspan="8" style="text-align:center;color:var(--text3);padding:1rem;">Loading...</td></tr>`;
   try {
-    // 1. Fetch live members from Cloud
-    const snapshot = await db.collection("members").get();
-    const members = [];
-    snapshot.forEach(doc => members.push(doc.data()));
-
-    // 2. Fetch live points from Leaderboard collection
-    const lbSnapshot = await db.collection("leaderboard").get();
-    const lbData = [];
-    lbSnapshot.forEach(doc => lbData.push(doc.data()));
-
-    // 3. Generate the rows
-    tbody.innerHTML = members.map(u => {
-      // Find points from the cloud leaderboard data
-      const pts = (lbData.find(e => e.id === u.id) || { points: 0 }).points;
-      
-      const pic = loadProfilePic(u.id);
-      const avatarHTML = pic 
-        ? `<img src="${pic}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:6px;"/>` 
-        : `<span class="mini-avatar">${u.initials || "??"}</span>`;
-
+    const [members, lb] = await Promise.all([getAllMembers(), getLeaderboard()]);
+    tbody.innerHTML=members.map(u=>{
+      const pts=(lb.find(e=>e.id===u.id)||{points:0}).points;
       return `<tr>
-        <td>${avatarHTML}<strong>${u.name}</strong></td>
-        <td style="font-size:12px;color:var(--text2)">${u.id}</td>
-        <td>${u.dept || "N/A"}</td>
-        <td>${u.year || "—"}</td>
-        <td>${u.role === "admin" 
-          ? '<span class="pill" style="background:var(--warning-light);color:var(--warning)">Admin</span>' 
-          : '<span class="pill pill-present">Member</span>'}</td>
-        <td><span class="pill ${u.status === "active" ? "pill-present" : "pill-absent"}">${u.status || "active"}</span></td>
+        <td><span class="mini-avatar">${u.initials}</span><strong>${escHtml(u.name)}</strong></td>
+        <td style="font-size:12px;color:var(--text2)">${escHtml(u.id)}</td>
+        <td>${escHtml(u.dept)}</td><td>${escHtml(u.year||"—")}</td>
+        <td>${u.role==="admin"?'<span class="pill" style="background:var(--warning-light);color:var(--warning)">Admin</span>':'<span class="pill pill-present">Member</span>'}</td>
+        <td><span class="pill ${u.status==="active"?"pill-present":"pill-absent"}">${u.status||"active"}</span></td>
         <td><strong>${pts}</strong></td>
-        <td>${u.id === uid 
-          ? '<span style="font-size:12px;color:var(--text3)">You</span>' 
-          : `<button class="btn-tbl-danger" onclick="handleRemoveMember('${u.id}')">Remove</button>`}</td>
+        <td>${u.id===uid?'<span style="font-size:12px;color:var(--text3)">You</span>':`<button class="btn-tbl-danger" onclick="doRemoveMember('${u.id}','${escHtml(u.name).replace(/'/g,"\\'")}')">Remove</button>`}</td>
       </tr>`;
     }).join("");
+  } catch(e){ tbody.innerHTML=`<tr><td colspan="8" style="color:var(--danger);padding:1rem;">Error loading members.</td></tr>`; }
+}
+async function updateAdminStats(){
+  try {
+    const members=await getAllMembers(), lb=await getLeaderboard();
+    document.getElementById("adminTotalMembers").textContent=members.length;
+    document.getElementById("adminActiveMembers").textContent=members.filter(m=>m.status==="active").length;
+    document.getElementById("adminTotalPoints").textContent=lb.reduce((s,e)=>s+(e.points||0),0);
+    document.getElementById("adminTotalNotices").textContent=notices.length;
+  } catch(e){}
+}
 
-    console.log("Admin table updated from Cloud.");
-  } catch (error) {
-    console.error("Error rendering member table:", error);
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:red;">Failed to load members from cloud.</td></tr>`;
-  }
-}
-function updateAdminStats(){
-  const members=getAllMembers(), lb=getLeaderboard();
-  document.getElementById("adminTotalMembers").textContent=members.length;
-  document.getElementById("adminActiveMembers").textContent=members.filter(m=>m.status==="active").length;
-  document.getElementById("adminTotalPoints").textContent=lb.reduce((s,e)=>s+e.points,0);
-  document.getElementById("adminTotalNotices").textContent=notices.length;
-}
 function openAddMemberModal(){ document.getElementById("addMemberModal").style.display="flex"; document.getElementById("addMemberForm").reset(); document.getElementById("addMemberError").textContent=""; }
 function closeAddMemberModal(){ document.getElementById("addMemberModal").style.display="none"; }
-async function submitAddMember() {
-  // 1. Get values from the modal inputs
-  const nameInput = document.getElementById('newName').value.trim();
-  const idInput = document.getElementById('newId').value.trim();
-  const passwordInput = document.getElementById('newPassword').value || "123456";
-  const deptInput = document.getElementById('newDept').value;
-  const emailInput = document.getElementById('newEmail').value.trim();
-  const phoneInput = document.getElementById('newPhone').value.trim();
-  const yearInput = document.getElementById('newYear').value;
-  const roleInput = document.getElementById('newRole').value;
-  const statusInput = document.getElementById('newStatus').value;
-
-  // 2. Simple validation
-  if (!nameInput || !idInput) {
-    alert("Name and Student ID are required!");
-    return;
-  }
-
-  // 3. Create the member object
-  const newMemberObj = {
-    id: idInput,
-    name: nameInput,
-    password: passwordInput,
-    dept: deptInput,
-    email: emailInput,
-    phone: phoneInput,
-    year: yearInput,
-    role: roleInput,
-    status: statusInput,
-    initials: nameInput.split(' ').map(n => n[0]).join('').toUpperCase()
-  };
-
-  // 4. Send to Firebase (using the 'await' we discussed)
-  const success = await addMember(newMemberObj); 
-  if (success) {
-    alert("Success! Member added to the cloud.");
-    closeAddMemberModal();
-    window.location.reload(); 
-  } else {
-    alert("Error: Could not save to cloud. Check your connection or Firebase Rules.");
-  }
+async function submitAddMember(){
+  const v=id=>document.getElementById(id).value.trim();
+  const name=v("newName"),mid=v("newId"),pwd=v("newPassword"),dept=v("newDept"),email=v("newEmail"),phone=v("newPhone"),year=v("newYear"),role=v("newRole"),status=v("newStatus");
+  const errEl=document.getElementById("addMemberError");
+  if(!name||!mid||!pwd||!dept||!email){ errEl.textContent="⚠️ Name, ID, Password, Dept and Email are required."; return; }
+  if(pwd.length<6){ errEl.textContent="⚠️ Password must be at least 6 characters."; return; }
+  const initials=(name.split(" ").map(w=>w[0]).join("").toUpperCase()+"??").slice(0,2);
+  const btn=document.querySelector("#addMemberForm .btn-primary"); btn.disabled=true; btn.textContent="Adding...";
+  try {
+    const ok=await addMember({ id:mid, password:pwd, name, initials, role, dept, email, phone, year, status });
+    if(!ok){ errEl.textContent="⚠️ A member with that ID already exists."; btn.disabled=false; btn.textContent="Add Member"; return; }
+    closeAddMemberModal(); await renderAdmin(); showToast("✅ Member '"+name+"' added!");
+  } catch(e){ errEl.textContent="❌ Error: "+e.message; }
+  btn.disabled=false; btn.textContent="Add Member";
 }
-function confirmRemoveMember(memberId,memberName){
-  if(!confirm(`Remove "${memberName}" (${memberId})?\n\nThis permanently deletes their account and all data.`)) return;
+async function doRemoveMember(memberId, memberName){
+  if(!confirm(`Remove "${memberName}" (${memberId})?\n\nThis permanently deletes their account.`)) return;
   if(memberId===uid){ showToast("⚠️ Cannot remove yourself!","warn"); return; }
-  removeMember(memberId); renderAdmin(); renderLeaderboard(); showToast("🗑 '"+memberName+"' removed.");
+  try { await removeMember(memberId); await renderAdmin(); showToast("🗑 '"+memberName+"' removed."); }
+  catch(e){ showToast("❌ Error removing member","warn"); }
 }
-function exportMembersCSV(){
-  const members=getAllMembers(), lb=getLeaderboard();
-  const headers=["Name","Student ID","Department","Year","Role","Email","Phone","Status","Points","Rank"];
-  const rows=members.map(u=>{ const lbE=lb.find(e=>e.id===u.id)||{points:0}; const rank=lb.findIndex(e=>e.id===u.id)+1||"—"; return [u.name,u.id,u.dept,u.year||"—",u.role,u.email,u.phone||"—",u.status||"active",lbE.points,rank]; });
-  const csv=[headers,...rows].map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
-  downloadFile(csv,"text/csv","UniClub_Members_"+new Date().toISOString().slice(0,10)+".csv");
-  showToast("📥 CSV downloaded! "+members.length+" members exported.");
+
+async function exportMembersCSV(){
+  try {
+    const [members, lb] = await Promise.all([getAllMembers(), getLeaderboard()]);
+    const headers=["Name","Student ID","Department","Year","Role","Email","Phone","Status","Points","Rank"];
+    const rows=members.map(u=>{ const lbE=lb.find(e=>e.id===u.id)||{points:0}; const rank=lb.findIndex(e=>e.id===u.id)+1||"—"; return [u.name,u.id,u.dept,u.year||"—",u.role,u.email,u.phone||"—",u.status||"active",lbE.points,rank]; });
+    const csv=[headers,...rows].map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
+    downloadFile(csv,"text/csv","AIUB_RD_Members_"+new Date().toISOString().slice(0,10)+".csv");
+    showToast("📥 CSV downloaded!");
+  } catch(e){ showToast("❌ Error exporting CSV","warn"); }
 }
+
 function triggerCSVImport(){ document.getElementById("csvImportInput").click(); }
 function handleCSVImport(input){
   const file=input.files[0]; if(!file) return;
@@ -942,84 +767,112 @@ function openCSVPreview(lines){
     if(!name||!id){ errors.push("Row "+(i+2)+": missing Name or ID — skipped."); return; }
     const pwd=get(["password","pass"])||id;
     const initials=(name.split(" ").map(w=>w[0]).join("").toUpperCase()+"??").slice(0,2);
-    preview.push({name,id,password:pwd,dept:get(["department","dept"])||"—",email:get(["email","mail"]),phone:get(["phone","mobile"]),year:get(["year","level","batch"]),role:get(["role"])||"member",status:get(["status"])||"active",initials});
+    preview.push({ name, id, password:pwd, dept:get(["department","dept"])||"—", email:get(["email","mail"]), phone:get(["phone","mobile"]), year:get(["year","level","batch"]), role:get(["role"])||"member", status:get(["status"])||"active", initials });
   });
   document.getElementById("csvPreviewErrors").innerHTML=errors.length?`<div class="csv-errors">`+errors.map(e=>`<div>⚠️ ${e}</div>`).join("")+`</div>`:"";
   document.getElementById("csvPreviewCount").textContent=preview.length+" member(s) ready to import";
-  document.getElementById("csvPreviewTbody").innerHTML=preview.map((m,i)=>`<tr><td><input type="checkbox" id="csvrow_${i}" checked style="width:14px;height:14px;accent-color:var(--primary)"/></td><td><strong>${m.name}</strong></td><td>${m.id}</td><td>${m.dept}</td><td>${m.email}</td><td>${m.role}</td></tr>`).join("");
+  document.getElementById("csvPreviewTbody").innerHTML=preview.map((m,i)=>`<tr><td><input type="checkbox" id="csvrow_${i}" checked style="width:14px;height:14px;accent-color:var(--primary)"/></td><td><strong>${escHtml(m.name)}</strong></td><td>${escHtml(m.id)}</td><td>${escHtml(m.dept)}</td><td>${escHtml(m.email)}</td><td>${escHtml(m.role)}</td></tr>`).join("");
   window._csvPreviewData=preview;
   document.getElementById("csvPreviewModal").style.display="flex";
 }
 function closeCSVPreview(){ document.getElementById("csvPreviewModal").style.display="none"; window._csvPreviewData=null; }
-function submitCSVImport(){
+async function submitCSVImport(){
   const data=window._csvPreviewData; if(!data) return;
+  const btn=document.querySelector("#csvPreviewModal .btn-primary"); btn.disabled=true; btn.textContent="Importing...";
   let added=0, skipped=0;
-  data.forEach((m,i)=>{ const cb=document.getElementById("csvrow_"+i); if(cb&&!cb.checked){ skipped++; return; } addMember(m)?added++:skipped++; });
-  closeCSVPreview(); renderAdmin(); renderLeaderboard();
+  for(let i=0;i<data.length;i++){
+    const cb=document.getElementById("csvrow_"+i); if(cb&&!cb.checked){ skipped++; continue; }
+    const ok=await addMember(data[i]);
+    ok?added++:skipped++;
+  }
+  closeCSVPreview(); await renderAdmin();
   showToast(`✅ Imported ${added} member(s).${skipped?" "+skipped+" skipped":""}`);
+  btn.disabled=false; btn.textContent="✅ Import Selected";
 }
-function openBulkAttendance(){
-  const members=getAllMembers().filter(m=>m.role!=="admin");
-  document.getElementById("bulkSessionDate").textContent=new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});
-  document.getElementById("bulkAttBody").innerHTML=members.map(m=>`
-    <tr><td><strong>${m.name}</strong></td><td style="font-size:12px;color:var(--text2)">${m.id}</td><td>${m.dept}</td>
-    <td><select class="bulk-status-select" data-id="${m.id}"><option value="Present">✅ Present</option><option value="Late">🕐 Late</option><option value="Absent" selected>❌ Absent</option></select></td>
-    <td><input type="text" class="bulk-note-input" data-id="${m.id}" placeholder="Note..." style="width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);font-size:12px;"/></td></tr>`).join("");
-  document.getElementById("bulkAttModal").style.display="flex";
+
+async function openBulkAttendance(){
+  try {
+    const members=await getAllMembers();
+    const nonAdmins=members.filter(m=>m.role!=="admin");
+    document.getElementById("bulkSessionDate").textContent=new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});
+    document.getElementById("bulkAttBody").innerHTML=nonAdmins.map(m=>`
+      <tr><td><strong>${escHtml(m.name)}</strong></td><td style="font-size:12px;color:var(--text2)">${escHtml(m.id)}</td><td>${escHtml(m.dept)}</td>
+      <td><select class="bulk-status-select" data-id="${m.id}"><option value="Present">✅ Present</option><option value="Late">🕐 Late</option><option value="Absent" selected>❌ Absent</option></select></td>
+      <td><input type="text" class="bulk-note-input" placeholder="Note..." style="width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);font-size:12px;"/></td></tr>`).join("");
+    document.getElementById("bulkAttModal").style.display="flex";
+  } catch(e){ showToast("❌ Error loading members","warn"); }
 }
 function closeBulkAttendance(){ document.getElementById("bulkAttModal").style.display="none"; }
-function submitBulkAttendance(){
+async function submitBulkAttendance(){
   const session=document.getElementById("bulkSessionName").value.trim()||"Club Session";
   const todayStr=new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"short"});
-  let saved=0;
-  document.querySelectorAll(".bulk-status-select").forEach((sel,i)=>{
-    const memberId=sel.dataset.id, status=sel.value;
-    const noteEl=document.querySelectorAll(".bulk-note-input")[i];
-    const note=noteEl?noteEl.value.trim():"—";
-    const mAtt=loadData(memberId,"attendance",getDefaultAttendance());
-    if(!mAtt.some(r=>r.date===todayStr&&r.session===session)){ mAtt.push({date:todayStr,session,status,note:note||"—"}); saveData(memberId,"attendance",mAtt); }
-    const mS=loadData(memberId,"stats",getDefaultStats(memberId));
-    if(status==="Present"){ const pc=mAtt.filter(r=>r.status==="Present").length; mS.attendanceRate=Math.round((pc/mAtt.length)*100); mS.streak=(mS.streak||0)+1; mS.points=(mS.points||0)+10; addPointsToLeaderboard(memberId,10); checkBadge_for(memberId,mS.streak>=7,"streak_7"); }
-    saveData(memberId,"stats",mS); saved++;
-  });
-  closeBulkAttendance(); attendance=loadData(uid,"attendance",getDefaultAttendance()); stats=loadData(uid,"stats",getDefaultStats(uid));
-  renderAttendance(); renderHome(); renderLeaderboard();
-  showToast("✅ Attendance saved for "+saved+" members!");
-}
-function checkBadge_for(memberId,condition,badgeId){
-  if(!condition) return;
-  const mB=loadData(memberId,"badges",getDefaultBadges()), b=mB.find(x=>x.id===badgeId);
-  if(b&&!b.earned){ b.earned=true; saveData(memberId,"badges",mB); const lb=getLeaderboard(),le=lb.find(e=>e.id===memberId); if(le){le.badges++;saveLeaderboard(lb);} }
+  const selects=document.querySelectorAll(".bulk-status-select");
+  const noteInputs=document.querySelectorAll(".bulk-note-input");
+  const btn=document.querySelector("#bulkAttModal .btn-primary"); btn.disabled=true; btn.textContent="Saving...";
+  try {
+    const records=[];
+    selects.forEach((sel,i)=>{ records.push({ memberId:sel.dataset.id, date:todayStr, session, status:sel.value, note:noteInputs[i]?.value.trim()||"—" }); });
+    await saveBulkAttendance(records);
+    closeBulkAttendance();
+    // Refresh current user's data
+    [stats, attendance] = await Promise.all([getStats(uid), getAttendance(uid)]);
+    renderAttendance(); renderHome();
+    showToast("✅ Attendance saved for "+records.length+" members!");
+  } catch(e){ showToast("❌ Error saving attendance: "+e.message,"warn"); }
+  btn.disabled=false; btn.textContent="💾 Save Attendance";
 }
 
 // =============================================
-// POINTS & BADGES
+// BADGE CHECKING
 // =============================================
-function addPoints(amount){ stats.points+=amount; addPointsToLeaderboard(uid,amount); checkBadge("top_3",getUserRank(uid)<=3); refreshStats(); }
-function refreshStats(){
-  [["statAttendance","pstatAttendance"],["statEvents","pstatEvents"],["statPoints","pstatPoints"],["statRank","pstatRank"]].forEach(([a,b])=>{
-    const va=document.getElementById(a), vb=document.getElementById(b);
-    const val=a==="statAttendance"?stats.attendanceRate+"%":a==="statEvents"?stats.eventsAttended:a==="statPoints"?stats.points:"#"+getUserRank(uid);
-    if(va) va.textContent=val; if(vb) vb.textContent=val;
-  });
-  const ss=document.getElementById("statStreak"); if(ss) ss.textContent=stats.streak+"d 🔥";
-  renderLeaderboard();
+async function checkBadge(id, condition){
+  if(!condition) return;
+  const badge=badges.find(b=>b.id===id);
+  if(badge&&!badge.earned){
+    badge.earned=true;
+    try {
+      await earnBadge(uid, id);
+      renderHomeBadges(); renderProfileBadges();
+      showToast("🏅 Badge unlocked: "+badge.name+"!");
+    } catch(e){ console.error("Badge error:",e); }
+  }
 }
-function checkBadge(id,condition){
-  const b=badges.find(x=>x.id===id);
-  if(b&&!b.earned&&condition){ b.earned=true; const lb=getLeaderboard(),e=lb.find(x=>x.id===uid); if(e){e.badges++;saveLeaderboard(lb);} saveAll(); renderHomeBadges(); renderProfileBadges(); showToast("🏅 Badge unlocked: "+b.name+"!"); }
+
+// =============================================
+// STATS REFRESH
+// =============================================
+function refreshStats(){
+  const rank=leaderboard.findIndex(e=>e.id===uid);
+  document.getElementById("statRank").textContent=rank>=0?"#"+(rank+1):"—";
+  document.getElementById("pstatRank").textContent=rank>=0?"#"+(rank+1):"—";
+  // Update points from leaderboard (source of truth)
+  const myLb=leaderboard.find(e=>e.id===uid);
+  if(myLb){
+    stats.points=myLb.points;
+    document.getElementById("statPoints").textContent=myLb.points;
+    document.getElementById("pstatPoints").textContent=myLb.points;
+  }
 }
 
 // =============================================
 // HELPERS
 // =============================================
-function downloadFile(content,mime,filename){ const blob=new Blob([content],{type:mime}); const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); }
-function logout(){ 
-  if(confirm("Log out?")){ 
-    clearSession(); 
-    window.location.href="index.html"; 
-  } 
+function downloadFile(content,mime,filename){
+  const blob=new Blob([content],{type:mime}); const url=URL.createObjectURL(blob);
+  const a=document.createElement("a"); a.href=url; a.download=filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
 }
+
+async function logout(){
+  if(confirm("Log out?")){
+    if(unsubLeaderboard) unsubLeaderboard();
+    if(unsubNotices) unsubNotices();
+    if(unsubEvents) unsubEvents();
+    clearSession();
+    window.location.href="index.html";
+  }
+}
+
 function showToast(msg,type="success"){
   const old=document.getElementById("toastMsg"); if(old) old.remove();
   const t=document.createElement("div"); t.id="toastMsg"; t.textContent=msg;
@@ -1027,3 +880,21 @@ function showToast(msg,type="success"){
   if(!document.getElementById("toastStyle")){ const s=document.createElement("style"); s.id="toastStyle"; s.textContent="@keyframes slideIn{from{transform:translateX(120%);opacity:0}to{transform:translateX(0);opacity:1}}"; document.head.appendChild(s); }
   document.body.appendChild(t); setTimeout(()=>t.remove(),3500);
 }
+
+// Expose all functions to HTML onclick handlers
+Object.assign(window,{
+  toggleSidebar, navigateTo, toggleTheme,
+  doRegisterEvent, doDeleteEvent, openAddEventModal, closeAddEventModal, submitAddEvent,
+  openEventAdmin, closeEventAdmin, switchEvTab, doToggleEventAtt,
+  toggleNoticeForm, postNotice, doDeleteNotice,
+  openChangePwModal, closeChangePwModal, submitChangePassword,
+  triggerProfilePicUpload, handleProfilePicChange,
+  togglePaperForm, submitPaper, doDeletePaper, handlePdfSelect, downloadPdf,
+  toggleTeamForm, submitTeam, doJoinTeam, doDeleteTeam,
+  toggleMentorForm, submitMentor, doDeleteMentor,
+  toggleSeminarForm, submitSeminar, doDeleteSeminar,
+  openAddMemberModal, closeAddMemberModal, submitAddMember, doRemoveMember,
+  exportMembersCSV, triggerCSVImport, handleCSVImport, openCSVPreview, closeCSVPreview, submitCSVImport,
+  openBulkAttendance, closeBulkAttendance, submitBulkAttendance,
+  logout
+});
