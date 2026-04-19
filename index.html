@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="css/style.css"/>
 </head>
 <body class="login-page">
-  <div class="login-wrapper">
+   <div class="login-wrapper">
     <div class="login-card">
       <div class="club-logo">
         <img src="IMG/logo.jpg" alt="Club Logo"/> 
@@ -29,27 +29,6 @@
       </p>
     </div>
   </div>
-
-  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
-
-  <script>
-    // Firebase Configuration
-    const firebaseConfig = {
-      apiKey: "AIzaSyCCEfpPzmhIbk9GIt2aYDl6R0gJ4fasfnM", // Replace with your real API Key
-      authDomain: "aiub-rnd-club.firebaseapp.com",
-      projectId: "aiub-rnd-club",
-      storageBucket: "aiub-rnd-club.firebasestorage.app",
-      messagingSenderId: "652214407284", // Replace with your sender ID
-      appId: "1:652214407284:web:1d908b123525099346c121" // Replace with your app ID
-    };
-
-    // Initialize Firebase
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.firestore();
-  </script>
-
-  <script src="js/data.js"></script>
-  <script src="js/login.js"></script>
+  <script type="module" src="js/login.js"></script>
 </body>
 </html>
