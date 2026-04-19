@@ -20,12 +20,13 @@ import {
   getMentors, addMentor, deleteMentor as fbDeleteMentor,
   getSeminars, addSeminar, deleteSeminar as fbDeleteSeminar,
   saveBulkAttendance,
-  listenToLeaderboard, listenToNotices, listenToEvents
+  listenToLeaderboard, listenToNotices, listenToEvents,
+  sendChatMessage, getChatMessages, listenToChat, deleteChatMessage
 } from "./firebase.js";
 
 // ---- AUTH GUARD ----
 const currentUser = loadSession();
-if (!currentUser) window.location.href = "index.html";
+if (!currentUser) { window.location.href = "index.html"; throw new Error("Not logged in"); }
 const uid = currentUser.id;
 const isAdmin = currentUser.role === "admin";
 
@@ -584,23 +585,27 @@ async function renderTeams(){
   el.innerHTML=`<p style="color:var(--text3);">Loading teams...</p>`;
   try {
     const teams=await getTeams(), members=await getAllMembers();
+    if(!teams.length){ el.innerHTML=`<p style="color:var(--text3);">No teams yet. Create one above!</p>`; return; }
     el.innerHTML=teams.map(t=>{
       const isMember=(t.members||[]).includes(uid);
       const memberNames=(t.members||[]).map(id=>{ const m=members.find(x=>x.id===id); return m?m.name:id; });
       return `<div class="team-card">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:.5rem;">
           <div class="team-name">${escHtml(t.name)}</div>
           <span class="team-status ${t.status==="Active"?"status-active":"status-forming"}">${t.status}</span>
         </div>
         <div class="team-topic">🔬 ${escHtml(t.topic)}</div>
         <div class="team-lead">👑 Lead: <strong>${escHtml(t.lead)}</strong></div>
         <div class="team-members">👥 ${escHtml(memberNames.join(", "))}</div>
-        <div style="margin-top:.75rem;display:flex;gap:8px;flex-wrap:wrap;">
-          ${isMember?`<span class="badge-registered" style="font-size:12px;">✓ You're in this team</span>`:`<button class="btn-register" style="font-size:12px;padding:5px 14px;" onclick="doJoinTeam('${t.firestoreId}')">Join Team</button>`}
-          ${isAdmin?`<button class="btn-admin-ev" onclick="doDeleteTeam('${t.firestoreId}')">🗑 Remove</button>`:""}
+        <div style="margin-top:.75rem;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          ${isMember
+            ? `<button class="btn-chat" onclick="openChat('${t.firestoreId}','${escHtml(t.name).replace(/'/g,"\\'")}')">💬 Team Chat</button>`
+            : `<button class="btn-register" style="font-size:12px;padding:5px 14px;" onclick="doJoinTeam('${t.firestoreId}')">Join Team</button>`}
+          ${isMember && !isAdmin ? `<span class="badge-registered" style="font-size:12px;">✓ Member</span>` : ""}
+          ${isAdmin ? `<button class="btn-admin-ev" onclick="openChat('${t.firestoreId}','${escHtml(t.name).replace(/'/g,"\\'")}')">💬 Chat</button><button class="btn-admin-ev" style="color:var(--danger);border-color:var(--danger);" onclick="doDeleteTeam('${t.firestoreId}')">🗑 Remove</button>` : ""}
         </div>
       </div>`;
-    }).join("") || `<p style="color:var(--text3);">No teams yet.</p>`;
+    }).join("");
   } catch(e){ el.innerHTML=`<p style="color:var(--danger);">Error loading teams.</p>`; }
 }
 function toggleTeamForm(){ document.getElementById("teamForm").classList.toggle("open"); }
@@ -608,11 +613,132 @@ async function submitTeam(){
   const v=id=>document.getElementById(id).value.trim();
   const name=v("teamName"),topic=v("teamTopic");
   if(!name||!topic){ showToast("⚠️ Name and topic required","warn"); return; }
-  try { await addTeam({ name, lead:v("teamLead")||currentUser.name, members:[uid], topic, status:v("teamStatus")||"Forming" }); document.getElementById("teamForm").classList.remove("open"); document.getElementById("teamForm").querySelectorAll("input,select").forEach(i=>i.value=""); await renderTeams(); showToast("🔬 Team created!"); }
+  try { await addTeam({ name, lead:v("teamLead")||currentUser.name, members:[uid], topic, status:v("teamStatus")||"Forming" }); document.getElementById("teamForm").classList.remove("open"); document.getElementById("teamForm").querySelectorAll("input,select").forEach(i=>i.value=""); await renderTeams(); showToast("🔬 Team created! You can now open its chat."); }
   catch(e){ showToast("❌ Error: "+e.message,"warn"); }
 }
-async function doJoinTeam(fid){ try { await fbJoinTeam(fid,uid); await renderTeams(); showToast("🤝 Joined team!"); } catch(e){ showToast("❌ Error joining team","warn"); } }
-async function doDeleteTeam(fid){ if(!confirm("Delete this team?")) return; try { await fbDeleteTeam(fid); await renderTeams(); } catch(e){ showToast("❌ Error","warn"); } }
+async function doJoinTeam(fid){
+  try {
+    await fbJoinTeam(fid,uid);
+    await renderTeams();
+    showToast("🤝 Joined team! You can now access the team chat.");
+  } catch(e){ showToast("❌ Error joining team","warn"); }
+}
+async function doDeleteTeam(fid){
+  if(!confirm("Delete this team and all its chat history?")) return;
+  try { await fbDeleteTeam(fid); closeChatModal(); await renderTeams(); }
+  catch(e){ showToast("❌ Error","warn"); }
+}
+
+// =============================================
+// TEAM CHAT
+// =============================================
+let _chatUnsub       = null; // active Firestore listener
+let _activeChatTeamId = null;
+
+function openChat(teamId, teamName){
+  _activeChatTeamId = teamId;
+
+  // Set modal header
+  document.getElementById("chatModalTitle").textContent = "💬 "+teamName;
+  document.getElementById("chatModal").style.display = "flex";
+
+  // Clear previous messages, show loader
+  const msgList = document.getElementById("chatMessages");
+  msgList.innerHTML = `<div class="chat-loading">Loading messages...</div>`;
+
+  // Clear old send input
+  document.getElementById("chatInput").value = "";
+  document.getElementById("chatInput").focus();
+
+  // Stop any previous listener
+  if(_chatUnsub) { _chatUnsub(); _chatUnsub=null; }
+
+  // Start real-time listener
+  _chatUnsub = listenToChat(teamId, messages => {
+    renderChatMessages(messages);
+  });
+}
+
+function closeChatModal(){
+  document.getElementById("chatModal").style.display = "none";
+  if(_chatUnsub){ _chatUnsub(); _chatUnsub=null; }
+  _activeChatTeamId = null;
+}
+
+function renderChatMessages(messages){
+  const msgList = document.getElementById("chatMessages");
+  if(!messages.length){
+    msgList.innerHTML = `<div class="chat-empty">No messages yet. Say hello! 👋</div>`;
+    return;
+  }
+
+  // Group consecutive messages from same sender
+  let html = "";
+  let prevSender = null;
+  messages.forEach((msg, idx) => {
+    const isMe = msg.senderId === uid;
+    const showHeader = msg.senderId !== prevSender;
+    const time = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"}) : "";
+    const date = msg.timestamp ? new Date(msg.timestamp).toLocaleDateString("en-GB",{day:"2-digit",month:"short"}) : "";
+
+    // Date separator — show when day changes
+    if(idx===0 || (idx>0 && new Date(messages[idx-1].timestamp).toDateString() !== new Date(msg.timestamp).toDateString())){
+      html += `<div class="chat-date-sep"><span>${date}</span></div>`;
+    }
+
+    html += `<div class="chat-msg-wrap ${isMe?"chat-me":"chat-them"}">
+      ${!isMe && showHeader ? `<div class="chat-avatar">${escHtml(msg.senderInitials||"?")}</div>` : `<div class="chat-avatar-gap"></div>`}
+      <div class="chat-bubble-group">
+        ${showHeader && !isMe ? `<div class="chat-sender-name">${escHtml(msg.senderName)}</div>` : ""}
+        <div class="chat-bubble ${isMe?"bubble-me":"bubble-them"}" title="${time}">
+          ${escHtml(msg.text)}
+          ${(isAdmin || msg.senderId===uid) ? `<button class="chat-del-btn" onclick="doDeleteChatMsg('${msg.id}')">✕</button>` : ""}
+        </div>
+        <div class="chat-time">${time}</div>
+      </div>
+    </div>`;
+    prevSender = msg.senderId;
+  });
+
+  msgList.innerHTML = html;
+  // Auto-scroll to bottom
+  msgList.scrollTop = msgList.scrollHeight;
+}
+
+async function sendMessage(){
+  const input = document.getElementById("chatInput");
+  const text  = input.value.trim();
+  if(!text || !_activeChatTeamId) return;
+
+  input.value = "";
+  input.focus();
+
+  try {
+    await sendChatMessage(_activeChatTeamId, {
+      senderId:       uid,
+      senderName:     currentUser.name,
+      senderInitials: currentUser.initials,
+      text
+    });
+  } catch(e){
+    showToast("❌ Failed to send message","warn");
+    input.value = text; // restore
+  }
+}
+
+async function doDeleteChatMsg(msgId){
+  if(!_activeChatTeamId) return;
+  try { await deleteChatMessage(_activeChatTeamId, msgId); }
+  catch(e){ showToast("❌ Error deleting message","warn"); }
+}
+
+// Send on Enter (Shift+Enter = new line)
+function chatKeydown(e){
+  if(e.key === "Enter" && !e.shiftKey){
+    e.preventDefault();
+    sendMessage();
+  }
+}
 
 // -- Mentors --
 async function renderMentors(){
@@ -881,8 +1007,8 @@ function showToast(msg,type="success"){
   document.body.appendChild(t); setTimeout(()=>t.remove(),3500);
 }
 
-// Expose all functions to HTML onclick handlers
-Object.assign(window,{
+// Expose all functions via window.APP so the HTML bridge script can call them
+window.APP = {
   toggleSidebar, navigateTo, toggleTheme,
   doRegisterEvent, doDeleteEvent, openAddEventModal, closeAddEventModal, submitAddEvent,
   openEventAdmin, closeEventAdmin, switchEvTab, doToggleEventAtt,
@@ -891,10 +1017,11 @@ Object.assign(window,{
   triggerProfilePicUpload, handleProfilePicChange,
   togglePaperForm, submitPaper, doDeletePaper, handlePdfSelect, downloadPdf,
   toggleTeamForm, submitTeam, doJoinTeam, doDeleteTeam,
+  openChat, closeChatModal, sendMessage, chatKeydown, doDeleteChatMsg,
   toggleMentorForm, submitMentor, doDeleteMentor,
   toggleSeminarForm, submitSeminar, doDeleteSeminar,
   openAddMemberModal, closeAddMemberModal, submitAddMember, doRemoveMember,
   exportMembersCSV, triggerCSVImport, handleCSVImport, openCSVPreview, closeCSVPreview, submitCSVImport,
   openBulkAttendance, closeBulkAttendance, submitBulkAttendance,
   logout
-});
+};
