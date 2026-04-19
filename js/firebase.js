@@ -1,0 +1,445 @@
+/* =============================================
+   AIUB R&D CLUB — FIREBASE CONFIG & HELPERS
+   js/firebase.js
+   All Firestore reads/writes live here.
+   ============================================= */
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc,
+         collection, getDocs, addDoc, query, orderBy, onSnapshot,
+         arrayUnion, arrayRemove, increment, serverTimestamp,
+         writeBatch } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getStorage, ref, uploadString, getDownloadURL, deleteObject }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
+
+const firebaseConfig = {
+  apiKey:            "AIzaSyCCEfpPzmhIbk9GIt2aYDl6R0gJ4fasfnM",
+  authDomain:        "aiub-rnd-club.firebaseapp.com",
+  projectId:         "aiub-rnd-club",
+  storageBucket:     "aiub-rnd-club.firebasestorage.app",
+  messagingSenderId: "652214407284",
+  appId:             "1:652214407284:web:1d908b123525099346c121",
+  measurementId:     "G-FKRY0YW370"
+};
+
+const app = initializeApp(firebaseConfig);
+export const db  = getFirestore(app);
+export const storage = getStorage(app);
+
+/* =============================================
+   FIRESTORE STRUCTURE
+   /members/{memberId}          — member profile + password
+   /members/{memberId}/attendance/{recordId}
+   /members/{memberId}/badges/{badgeId}
+   /events/{eventId}            — shared events
+   /notices/{noticeId}          — shared notices
+   /leaderboard/{memberId}      — points + rank
+   /research/papers/{paperId}
+   /research/teams/{teamId}
+   /research/mentors/{mentorId}
+   /research/seminars/{seminarId}
+   /meta/streak/{memberId}      — streak arrays
+   ============================================= */
+
+// ---- SESSION (still browser-side, just stores safe user info) ----
+export function saveSession(u){
+  sessionStorage.setItem("uniclub_user", JSON.stringify({
+    id:u.id, name:u.name, initials:u.initials, role:u.role, dept:u.dept, email:u.email
+  }));
+}
+export function loadSession(){
+  const r=sessionStorage.getItem("uniclub_user"); return r?JSON.parse(r):null;
+}
+export function clearSession(){ sessionStorage.removeItem("uniclub_user"); }
+
+// ---- AUTH ----
+export async function findUser(id, pw){
+  try {
+    const snap = await getDoc(doc(db,"members",id));
+    if(!snap.exists()) return null;
+    const data = snap.data();
+    if(data.password !== pw) return null;
+    return { id, ...data };
+  } catch(e){ console.error("findUser error",e); return null; }
+}
+
+export async function changePassword(uid, newPw){
+  await updateDoc(doc(db,"members",uid), { password: newPw });
+}
+
+// ---- MEMBERS ----
+export async function getAllMembers(){
+  const snap = await getDocs(collection(db,"members"));
+  return snap.docs.map(d=>({ id:d.id, ...d.data() }));
+}
+
+export async function addMember(m){
+  const existing = await getDoc(doc(db,"members",m.id));
+  if(existing.exists()) return false;
+  await setDoc(doc(db,"members",m.id), m);
+  // Create leaderboard entry
+  await setDoc(doc(db,"leaderboard",m.id), {
+    name:m.name, initials:m.initials, points:0, badges:0,
+    bgColor:"#e9ecef", txtColor:"#495057"
+  });
+  // Seed default stats
+  await setDoc(doc(db,"stats",m.id), getDefaultStats(m.id));
+  // Seed default badges
+  const batch = writeBatch(db);
+  getDefaultBadges().forEach(b=>{
+    batch.set(doc(db,"badges",m.id+"_"+b.id), { memberId:m.id, ...b });
+  });
+  await batch.commit();
+  return true;
+}
+
+export async function removeMember(id){
+  // Delete member doc
+  await deleteDoc(doc(db,"members",id));
+  await deleteDoc(doc(db,"leaderboard",id));
+  await deleteDoc(doc(db,"stats",id));
+  // Note: sub-collections (attendance, badges) are not auto-deleted
+  // They will be orphaned but won't affect the app
+}
+
+export async function updateMemberStatus(id, status){
+  await updateDoc(doc(db,"members",id), { status });
+}
+
+// ---- STATS (per member) ----
+export async function getStats(uid){
+  const snap = await getDoc(doc(db,"stats",uid));
+  if(snap.exists()) return snap.data();
+  const def = getDefaultStats(uid);
+  await setDoc(doc(db,"stats",uid), def);
+  return def;
+}
+export async function saveStats(uid, data){
+  await setDoc(doc(db,"stats",uid), data, { merge:true });
+}
+export async function addPointsToMember(uid, pts){
+  await updateDoc(doc(db,"stats",uid), { points: increment(pts) });
+  await updateDoc(doc(db,"leaderboard",uid), { points: increment(pts) });
+}
+
+// ---- ATTENDANCE (per member) ----
+export async function getAttendance(uid){
+  const snap = await getDocs(
+    query(collection(db,"members",uid,"attendance"), orderBy("timestamp","desc"))
+  );
+  if(snap.empty){
+    // Seed default attendance on first load
+    const defaults = getDefaultAttendance();
+    const batch = writeBatch(db);
+    defaults.forEach((r,i)=>{
+      batch.set(doc(collection(db,"members",uid,"attendance")), { ...r, timestamp: Date.now()-i*1000 });
+    });
+    await batch.commit();
+    return defaults;
+  }
+  return snap.docs.map(d=>d.data());
+}
+export async function addAttendanceRecord(uid, record){
+  await addDoc(collection(db,"members",uid,"attendance"), {
+    ...record, timestamp: Date.now()
+  });
+}
+
+// ---- STREAK ----
+export async function getStreak(uid){
+  const snap = await getDoc(doc(db,"streaks",uid));
+  if(snap.exists()) return snap.data().streak;
+  const def = getDefaultStreak();
+  await setDoc(doc(db,"streaks",uid), { streak:def });
+  return def;
+}
+export async function saveStreak(uid, streakArr){
+  await setDoc(doc(db,"streaks",uid), { streak:streakArr });
+}
+
+// ---- BADGES (per member) ----
+export async function getBadges(uid){
+  const snap = await getDocs(collection(db,"members",uid,"badges"));
+  if(snap.empty){
+    const defaults = getDefaultBadges();
+    const batch = writeBatch(db);
+    defaults.forEach(b=>{
+      batch.set(doc(db,"members",uid,"badges",b.id), b);
+    });
+    await batch.commit();
+    return defaults;
+  }
+  return snap.docs.map(d=>({ id:d.id, ...d.data() }));
+}
+export async function earnBadge(uid, badgeId){
+  await updateDoc(doc(db,"members",uid,"badges",badgeId), { earned:true });
+  await updateDoc(doc(db,"leaderboard",uid), { badges: increment(1) });
+}
+
+// ---- EVENTS (global/shared) ----
+export async function getEvents(){
+  const snap = await getDocs(query(collection(db,"events"), orderBy("sortOrder","asc")));
+  if(snap.empty){
+    // Seed default events
+    const defaults = getDefaultEvents();
+    const batch = writeBatch(db);
+    defaults.forEach((ev,i)=>{
+      batch.set(doc(db,"events",String(ev.id)), { ...ev, sortOrder:i });
+    });
+    await batch.commit();
+    return defaults;
+  }
+  return snap.docs.map(d=>({ firestoreId:d.id, ...d.data() }));
+}
+export async function createEvent(ev){
+  const ref = await addDoc(collection(db,"events"), { ...ev, sortOrder: Date.now() });
+  return ref.id;
+}
+export async function updateEvent(firestoreId, data){
+  await updateDoc(doc(db,"events",firestoreId), data);
+}
+export async function deleteEvent(firestoreId){
+  await deleteDoc(doc(db,"events",firestoreId));
+}
+export async function registerForEvent(firestoreId, uid){
+  await updateDoc(doc(db,"events",firestoreId), { registrants: arrayUnion(uid) });
+}
+export async function markEventAttendee(firestoreId, memberId, attended){
+  if(attended){
+    await updateDoc(doc(db,"events",firestoreId), { attendees: arrayUnion(memberId) });
+  } else {
+    await updateDoc(doc(db,"events",firestoreId), { attendees: arrayRemove(memberId) });
+  }
+}
+
+// ---- NOTICES (global/shared) ----
+export async function getNotices(){
+  const snap = await getDocs(query(collection(db,"notices"), orderBy("timestamp","desc")));
+  if(snap.empty){
+    const defaults = getDefaultNotices();
+    const batch = writeBatch(db);
+    defaults.forEach(n=>{
+      batch.set(doc(collection(db,"notices")), { ...n, timestamp: Date.now() });
+    });
+    await batch.commit();
+    return defaults.map((n,i)=>({ firestoreId:"seed"+i, ...n }));
+  }
+  return snap.docs.map(d=>({ firestoreId:d.id, ...d.data() }));
+}
+export async function addNotice(notice){
+  const ref = await addDoc(collection(db,"notices"), { ...notice, timestamp: Date.now() });
+  return ref.id;
+}
+export async function deleteNotice(firestoreId){
+  await deleteDoc(doc(db,"notices",firestoreId));
+}
+
+// ---- LEADERBOARD ----
+export async function getLeaderboard(){
+  const snap = await getDocs(query(collection(db,"leaderboard"), orderBy("points","desc")));
+  if(snap.empty){
+    // Seed from members
+    const members = await getAllMembers();
+    const batch = writeBatch(db);
+    members.forEach(m=>{
+      batch.set(doc(db,"leaderboard",m.id),{
+        name:m.name, initials:m.initials, points:0, badges:0,
+        bgColor:"#e9ecef", txtColor:"#495057"
+      });
+    });
+    await batch.commit();
+    return members.map(m=>({ id:m.id, name:m.name, initials:m.initials, points:0, badges:0, bgColor:"#e9ecef", txtColor:"#495057" }));
+  }
+  return snap.docs.map(d=>({ id:d.id, ...d.data() }));
+}
+export async function getUserRank(uid){
+  const lb = await getLeaderboard();
+  const idx = lb.findIndex(e=>e.id===uid);
+  return idx>=0 ? idx+1 : "—";
+}
+
+// ---- PROFILE PICTURE (Firebase Storage) ----
+export async function saveProfilePic(uid, base64DataUrl){
+  // Store as base64 in Firestore (simpler than Storage for small images)
+  await setDoc(doc(db,"profilePics",uid), { dataUrl: base64DataUrl });
+}
+export async function loadProfilePic(uid){
+  try {
+    const snap = await getDoc(doc(db,"profilePics",uid));
+    return snap.exists() ? snap.data().dataUrl : null;
+  } catch(e){ return null; }
+}
+
+// ---- RESEARCH — PAPERS ----
+export async function getPapers(){
+  const snap = await getDocs(query(collection(db,"papers"), orderBy("timestamp","desc")));
+  if(snap.empty){
+    const defaults = getDefaultPapers();
+    const batch = writeBatch(db);
+    defaults.forEach(p=>{ batch.set(doc(collection(db,"papers")), { ...p, timestamp:Date.now() }); });
+    await batch.commit();
+    return defaults;
+  }
+  return snap.docs.map(d=>({ firestoreId:d.id, ...d.data() }));
+}
+export async function addPaper(paper){
+  const ref = await addDoc(collection(db,"papers"), { ...paper, timestamp:Date.now() });
+  return ref.id;
+}
+export async function deletePaper(firestoreId){
+  await deleteDoc(doc(db,"papers",firestoreId));
+}
+
+// ---- RESEARCH — TEAMS ----
+export async function getTeams(){
+  const snap = await getDocs(collection(db,"teams"));
+  if(snap.empty){
+    const defaults = getDefaultTeams();
+    const batch = writeBatch(db);
+    defaults.forEach(t=>{ batch.set(doc(collection(db,"teams")), t); });
+    await batch.commit();
+    return defaults;
+  }
+  return snap.docs.map(d=>({ firestoreId:d.id, ...d.data() }));
+}
+export async function addTeam(team){
+  const ref = await addDoc(collection(db,"teams"), team);
+  return ref.id;
+}
+export async function joinTeam(firestoreId, uid){
+  await updateDoc(doc(db,"teams",firestoreId), { members: arrayUnion(uid) });
+}
+export async function deleteTeam(firestoreId){
+  await deleteDoc(doc(db,"teams",firestoreId));
+}
+
+// ---- RESEARCH — MENTORS ----
+export async function getMentors(){
+  const snap = await getDocs(collection(db,"mentors"));
+  if(snap.empty){
+    const defaults = getDefaultMentors();
+    const batch = writeBatch(db);
+    defaults.forEach(m=>{ batch.set(doc(collection(db,"mentors")), m); });
+    await batch.commit();
+    return defaults;
+  }
+  return snap.docs.map(d=>({ firestoreId:d.id, ...d.data() }));
+}
+export async function addMentor(mentor){
+  const ref = await addDoc(collection(db,"mentors"), mentor);
+  return ref.id;
+}
+export async function deleteMentor(firestoreId){
+  await deleteDoc(doc(db,"mentors",firestoreId));
+}
+
+// ---- RESEARCH — SEMINARS ----
+export async function getSeminars(){
+  const snap = await getDocs(query(collection(db,"seminars"), orderBy("timestamp","desc")));
+  if(snap.empty){
+    const defaults = getDefaultSeminars();
+    const batch = writeBatch(db);
+    defaults.forEach(s=>{ batch.set(doc(collection(db,"seminars")), { ...s, timestamp:Date.now() }); });
+    await batch.commit();
+    return defaults;
+  }
+  return snap.docs.map(d=>({ firestoreId:d.id, ...d.data() }));
+}
+export async function addSeminar(seminar){
+  const ref = await addDoc(collection(db,"seminars"), { ...seminar, timestamp:Date.now() });
+  return ref.id;
+}
+export async function deleteSeminar(firestoreId){
+  await deleteDoc(doc(db,"seminars",firestoreId));
+}
+
+// ---- BULK ATTENDANCE ----
+export async function saveBulkAttendance(records){
+  // records = [{ memberId, date, session, status, note }]
+  const batch = writeBatch(db);
+  for(const r of records){
+    const attRef = doc(collection(db,"members",r.memberId,"attendance"));
+    batch.set(attRef, { date:r.date, session:r.session, status:r.status, note:r.note, timestamp:Date.now() });
+    // Update stats
+    const statsRef = doc(db,"stats",r.memberId);
+    const statsSnap = await getDoc(statsRef);
+    const mStats = statsSnap.exists() ? statsSnap.data() : getDefaultStats(r.memberId);
+    if(r.status==="Present"){
+      mStats.streak = (mStats.streak||0)+1;
+      mStats.points = (mStats.points||0)+10;
+      batch.update(statsRef, { streak:mStats.streak, points:mStats.points });
+      batch.update(doc(db,"leaderboard",r.memberId), { points:increment(10) });
+    }
+  }
+  await batch.commit();
+}
+
+// ---- REAL-TIME LISTENERS (live sync) ----
+export function listenToLeaderboard(callback){
+  return onSnapshot(
+    query(collection(db,"leaderboard"), orderBy("points","desc")),
+    snap => callback(snap.docs.map(d=>({ id:d.id, ...d.data() })))
+  );
+}
+export function listenToNotices(callback){
+  return onSnapshot(
+    query(collection(db,"notices"), orderBy("timestamp","desc")),
+    snap => callback(snap.docs.map(d=>({ firestoreId:d.id, ...d.data() })))
+  );
+}
+export function listenToEvents(callback){
+  return onSnapshot(
+    query(collection(db,"events"), orderBy("sortOrder","asc")),
+    snap => callback(snap.docs.map(d=>({ firestoreId:d.id, ...d.data() })))
+  );
+}
+
+// ---- DEFAULT DATA (used for seeding) ----
+function getDefaultStats(uid){
+  return { attendanceRate:0, eventsAttended:0, points:uid==="admin"?0:0, streak:0, noticesPosted:0 };
+}
+function getDefaultBadges(){
+  return [
+    {id:"first_login",icon:"🌟",name:"First Login", earned:true, desc:"Logged in for the first time"},
+    {id:"event_pro",  icon:"🎯",name:"Event Pro",   earned:false,desc:"Attend 3 events"},
+    {id:"streak_7",   icon:"🔥",name:"7-Day Streak",earned:false,desc:"Attend 7 sessions in a row"},
+    {id:"team_player",icon:"🤝",name:"Team Player", earned:false,desc:"Register for a team event"},
+    {id:"reporter",   icon:"📝",name:"Reporter",    earned:false,desc:"Post 3 notices"},
+    {id:"top_3",      icon:"👑",name:"Top 3",       earned:false,desc:"Reach top 3 on leaderboard"}
+  ];
+}
+function getDefaultStreak(){
+  return Array(30).fill(null);
+}
+function getDefaultAttendance(){ return []; }
+function getDefaultEvents(){
+  return [
+    { id:1, day:"25", month:"Apr", year:"2026", title:"Photography Workshop", description:"Learn DSLR photography, composition, and post-processing with Adobe Lightroom.", venue:"Art Block, Studio 2", time:"11:00 AM", duration:"4 hours", capacity:30, category:"Workshop", points:20, organizer:"Arts Committee", past:false, registrants:[], attendees:[] },
+    { id:2, day:"20", month:"Mar", year:"2026", title:"Workshop: Python Fundamentals", description:"Introductory Python workshop covering variables, loops, functions, and data structures.", venue:"CS Lab A, 2nd Floor", time:"10:00 AM", duration:"3 hours", capacity:45, category:"Workshop", points:20, organizer:"Tech Committee", past:true, registrants:[], attendees:[] }
+  ];
+}
+function getDefaultNotices(){
+  return [
+    { tag:"general", title:"Welcome to AIUB R&D Club Portal!", body:"This is the official portal for AIUB R&D Club members. Explore events, papers, and more.", date:"Just now", author:"Admin" }
+  ];
+}
+function getDefaultPapers(){
+  return [
+    { title:"Machine Learning in Climate Prediction", authors:"Nadia Khan, Arif Rahman", link:"https://ieeexplore.ieee.org/", year:2025, tags:["ML","Climate"], addedBy:"Nadia Khan", addedById:"2023-CS-010", date:"Mar 10", pdfData:null, pdfName:null }
+  ];
+}
+function getDefaultTeams(){
+  return [
+    { name:"NLP Research Group", lead:"Nadia Khan", members:["2023-CS-010"], topic:"Bangla NLP & Sentiment Analysis", status:"Active" }
+  ];
+}
+function getDefaultMentors(){
+  return [
+    { name:"Dr. Asif Mahmud", title:"Club Supervisor", dept:"CS Dept", expertise:"Machine Learning, Deep Learning", email:"asif@university.edu", available:true }
+  ];
+}
+function getDefaultSeminars(){
+  return [
+    { title:"Introduction to Transformer Models", speaker:"Dr. Asif Mahmud", date:"Mar 15, 2026", duration:"90 min", attendees:[], notes:"Covered BERT, GPT architecture. Slides shared on drive." }
+  ];
+}
