@@ -443,3 +443,48 @@ function getDefaultSeminars(){
     { title:"Introduction to Transformer Models", speaker:"Dr. Asif Mahmud", date:"Mar 15, 2026", duration:"90 min", attendees:[], notes:"Covered BERT, GPT architecture. Slides shared on drive." }
   ];
 }
+
+// =============================================
+// TEAM CHAT
+// Firestore path: /teamChats/{teamId}/messages/{msgId}
+// Each message: { senderId, senderName, senderInitials, text, timestamp }
+// =============================================
+
+// Send a message to a team chat
+export async function sendChatMessage(teamId, message){
+  await addDoc(collection(db, "teamChats", teamId, "messages"), {
+    senderId:       message.senderId,
+    senderName:     message.senderName,
+    senderInitials: message.senderInitials,
+    text:           message.text,
+    timestamp:      Date.now()
+  });
+}
+
+// Get last N messages (for initial load)
+export async function getChatMessages(teamId, limitCount = 50){
+  const q = query(
+    collection(db, "teamChats", teamId, "messages"),
+    orderBy("timestamp", "asc")
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+// Real-time listener for new messages in a team chat
+// Returns an unsubscribe function — call it to stop listening
+export function listenToChat(teamId, callback){
+  const q = query(
+    collection(db, "teamChats", teamId, "messages"),
+    orderBy("timestamp", "asc")
+  );
+  return onSnapshot(q, snap => {
+    const messages = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    callback(messages);
+  });
+}
+
+// Delete a single message (admin or sender only)
+export async function deleteChatMessage(teamId, messageId){
+  await deleteDoc(doc(db, "teamChats", teamId, "messages", messageId));
+}
