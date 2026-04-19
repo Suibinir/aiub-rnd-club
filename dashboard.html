@@ -163,6 +163,43 @@
 <input type="file" id="csvImportInput" accept=".csv" style="display:none" onchange="handleCSVImport(this)"/>
 <input type="file" id="profilePicInput" accept="image/*" style="display:none" onchange="handleProfilePicChange(this)"/>
 
+<!-- ========== TEAM CHAT MODAL ========== -->
+<div class="modal-overlay chat-modal-overlay" id="chatModal" style="display:none">
+  <div class="chat-modal-box">
+    <!-- Chat Header -->
+    <div class="chat-header">
+      <div class="chat-header-left">
+        <div class="chat-header-icon">💬</div>
+        <div>
+          <div class="chat-header-title" id="chatModalTitle">Team Chat</div>
+          <div class="chat-header-sub">Real-time · All messages saved</div>
+        </div>
+      </div>
+      <button class="modal-close" onclick="closeChatModal()" style="flex-shrink:0;">✕</button>
+    </div>
+
+    <!-- Messages area -->
+    <div class="chat-messages" id="chatMessages">
+      <div class="chat-loading">Loading messages...</div>
+    </div>
+
+    <!-- Input area -->
+    <div class="chat-input-area">
+      <textarea
+        class="chat-input"
+        id="chatInput"
+        placeholder="Type a message... (Enter to send, Shift+Enter for new line)"
+        rows="1"
+        onkeydown="chatKeydown(event)"
+        oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'"
+      ></textarea>
+      <button class="chat-send-btn" onclick="sendMessage()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- ========== SIDEBAR ========== -->
 <aside class="sidebar" id="sidebar">
   <div class="sidebar-logo">
@@ -177,7 +214,7 @@
     <div class="nav-item" data-page="notices">📢 &nbsp;Notice Board &nbsp;<span class="nav-badge" id="noticeBadge">3</span></div>
     <div class="nav-section-label" style="margin-top:1.25rem;">Research</div>
     <div class="nav-item" data-page="papers">📄 &nbsp;Paper Library</div>
-    <div class="nav-item" data-page="teams">🔬 &nbsp;Project Teams</div>
+    <div class="nav-item" data-page="teams">🔬 &nbsp;Project Teams &amp; Chat</div>
     <div class="nav-item" data-page="mentors">👨‍🏫 &nbsp;Mentors</div>
     <div class="nav-item" data-page="seminars">🎓 &nbsp;Seminars</div>
     <div class="nav-section-label" style="margin-top:1.25rem;">Community</div>
@@ -437,6 +474,35 @@
 
 <script type="module" src="js/dashboard.js"></script>
 <script>
+// Bridge: all onclick handlers call through window.APP which is set by the module
+// This thin wrapper makes onclick="X()" work with ES module functions
+function _call(name, ...args) {
+  if (window.APP && window.APP[name]) {
+    window.APP[name](...args);
+  } else {
+    // Retry after a short delay if module hasn't loaded yet
+    setTimeout(() => { if (window.APP && window.APP[name]) window.APP[name](...args); }, 500);
+  }
+}
+
+// All functions called from HTML onclick attributes:
+const _fns = ["toggleSidebar","navigateTo","toggleTheme","doRegisterEvent","doDeleteEvent",
+  "openAddEventModal","closeAddEventModal","submitAddEvent","openEventAdmin","closeEventAdmin",
+  "switchEvTab","doToggleEventAtt","toggleNoticeForm","postNotice","doDeleteNotice",
+  "openChangePwModal","closeChangePwModal","submitChangePassword","triggerProfilePicUpload",
+  "handleProfilePicChange","togglePaperForm","submitPaper","doDeletePaper","handlePdfSelect",
+  "downloadPdf","toggleTeamForm","submitTeam","doJoinTeam","doDeleteTeam",
+  "openChat","closeChatModal","sendMessage","chatKeydown","doDeleteChatMsg",
+  "toggleMentorForm","submitMentor","doDeleteMentor",
+  "toggleSeminarForm","submitSeminar","doDeleteSeminar",
+  "openAddMemberModal","closeAddMemberModal","submitAddMember","doRemoveMember",
+  "exportMembersCSV","triggerCSVImport","handleCSVImport","closeCSVPreview","submitCSVImport",
+  "openBulkAttendance","closeBulkAttendance","submitBulkAttendance","logout"];
+
+_fns.forEach(fn => {
+  window[fn] = (...args) => _call(fn, ...args);
+});
+
 function downloadSampleCSV(){
   const csv=`Name,StudentID,Password,Department,Email,Phone,Year,Role,Status\nRahim Ahmed,2025-CS-001,rahim123,CS Dept,rahim@univ.edu,01711-000001,1st Year,member,active\nSumaiya Islam,2025-EEE-002,sumaiya123,EEE Dept,sumaiya@univ.edu,01711-000002,1st Year,member,active`;
   const blob=new Blob([csv],{type:"text/csv"}); const url=URL.createObjectURL(blob);
