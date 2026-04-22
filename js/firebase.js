@@ -488,3 +488,97 @@ export function listenToChat(teamId, callback){
 export async function deleteChatMessage(teamId, messageId){
   await deleteDoc(doc(db, "teamChats", teamId, "messages", messageId));
 }
+
+// =============================================
+// NOTIFICATION SYSTEM
+// Firestore path: /notifications/{userId}/items/{notifId}
+// Each notification:
+//   { type, title, body, icon, link, read, timestamp }
+// type: "notice"|"event"|"attendance"|"badge"|"paper"|"seminar"|"chat"|"member"
+// link: which page to navigate to e.g. "notices", "events", "teams"
+// =============================================
+
+// Send a notification to one specific user
+export async function sendNotification(userId, notif){
+  await addDoc(collection(db,"notifications",userId,"items"), {
+    type:      notif.type      || "general",
+    title:     notif.title     || "",
+    body:      notif.body      || "",
+    icon:      notif.icon      || "🔔",
+    link:      notif.link      || "",
+    read:      false,
+    timestamp: Date.now()
+  });
+}
+
+// Send same notification to multiple users at once (batch)
+export async function broadcastNotification(userIds, notif){
+  const batch = writeBatch(db);
+  userIds.forEach(userId => {
+    const ref = doc(collection(db,"notifications",userId,"items"));
+    batch.set(ref, {
+      type:      notif.type      || "general",
+      title:     notif.title     || "",
+      body:      notif.body      || "",
+      icon:      notif.icon      || "🔔",
+      link:      notif.link      || "",
+      read:      false,
+      timestamp: Date.now()
+    });
+  });
+  await batch.commit();
+}
+
+// Fetch all notifications for a user (latest first)
+export async function getNotifications(userId){
+  const q = query(
+    collection(db,"notifications",userId,"items"),
+    orderBy("timestamp","desc")
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({ id:d.id, ...d.data() }));
+}
+
+// Mark one notification as read
+export async function markNotificationRead(userId, notifId){
+  await updateDoc(doc(db,"notifications",userId,"items",notifId), { read:true });
+}
+
+// Mark ALL notifications as read
+export async function markAllNotificationsRead(userId){
+  const q = query(
+    collection(db,"notifications",userId,"items"),
+    orderBy("timestamp","desc")
+  );
+  const snap = await getDocs(q);
+  const batch = writeBatch(db);
+  snap.docs.forEach(d => {
+    if(!d.data().read) batch.update(d.ref, { read:true });
+  });
+  await batch.commit();
+}
+
+// Delete a single notification
+export async function deleteNotification(userId, notifId){
+  await deleteDoc(doc(db,"notifications",userId,"items",notifId));
+}
+
+// Delete ALL notifications for a user
+export async function clearAllNotifications(userId){
+  const snap = await getDocs(collection(db,"notifications",userId,"items"));
+  const batch = writeBatch(db);
+  snap.docs.forEach(d => batch.delete(d.ref));
+  await batch.commit();
+}
+
+// Real-time listener — fires whenever notifications change
+export function listenToNotifications(userId, callback){
+  const q = query(
+    collection(db,"notifications",userId,"items"),
+    orderBy("timestamp","desc")
+  );
+  return onSnapshot(q, snap => {
+    callback(snap.docs.map(d => ({ id:d.id, ...d.data() })));
+  });
+}
+
