@@ -55,16 +55,11 @@
         <div class="form-group"><label>Full Name <span class="req">*</span></label><input type="text" id="newName" placeholder="e.g. Rahim Ahmed"/></div>
         <div class="form-group"><label>Student ID <span class="req">*</span></label><input type="text" id="newId" placeholder="e.g. 2025-CS-088"/></div>
         <div class="form-group"><label>Password <span class="req">*</span></label><input type="password" id="newPassword" placeholder="Min 6 characters"/></div>
-        <div class="form-group"><label>Department <span class="req">*</span></label>
-          <select id="newDept"><option>CS Dept</option><option>EEE Dept</option><option>ME Dept</option><option>BBA Dept</option><option>CE Dept</option><option>ETE Dept</option></select>
-        </div>
+        <div class="form-group"><label>Department <span class="req">*</span></label><input type="text" id="newDept" placeholder="e.g. Computer Science"/></div>
         <div class="form-group"><label>Email <span class="req">*</span></label><input type="email" id="newEmail" placeholder="student@university.edu"/></div>
         <div class="form-group"><label>Phone</label><input type="text" id="newPhone" placeholder="01700-xxxxxx"/></div>
-        <div class="form-group"><label>Year</label>
-          <select id="newYear"><option>1st Year</option><option>2nd Year</option><option>3rd Year</option><option>4th Year</option><option>Faculty</option></select>
-        </div>
         <div class="form-group"><label>Role</label>
-          <select id="newRole"><option value="member">Member</option><option value="admin">Admin</option></select>
+          <select id="newRole"><option value="member">Member</option><option value="moderator">Moderator</option><option value="admin">Admin</option></select>
         </div>
         <div class="form-group"><label>Status</label>
           <select id="newStatus"><option value="active">Active</option><option value="inactive">Inactive</option></select>
@@ -107,7 +102,10 @@
       <div><h3>📋 Bulk Attendance</h3><p style="font-size:13px;color:var(--text2);margin-top:2px;">Date: <strong id="bulkSessionDate"></strong></p></div>
       <button class="modal-close" onclick="closeBulkAttendance()">✕</button>
     </div>
-    <div class="form-group" style="margin-bottom:1rem;"><label>Session Name</label><input type="text" id="bulkSessionName" value="Regular Meeting"/></div>
+    <div style="display:flex;gap:10px;margin-bottom:1rem;flex-wrap:wrap;">
+      <div style="flex:1;min-width:200px;"><label style="font-size:13px;font-weight:600;color:var(--text2);display:block;margin-bottom:5px;">Session Name</label><input type="text" id="bulkSessionName" value="Regular Meeting" style="width:100%;padding:9px 13px;border:1.5px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-size:14px;outline:none;"/></div>
+      <div style="flex:1;min-width:200px;"><label style="font-size:13px;font-weight:600;color:var(--text2);display:block;margin-bottom:5px;">🔍 Search Members</label><input type="text" id="bulkSearchInput" placeholder="Type name to filter..." oninput="filterBulkAttendance(this.value)" style="width:100%;padding:9px 13px;border:1.5px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-size:14px;outline:none;"/></div>
+    </div>
     <div style="overflow-x:auto;max-height:380px;overflow-y:auto;">
       <table class="data-table">
         <thead style="position:sticky;top:0;background:var(--surface);"><tr><th>Name</th><th>Student ID</th><th>Dept</th><th>Status</th><th>Note</th></tr></thead>
@@ -159,6 +157,51 @@
   </div>
 </div>
 
+<!-- ========== EDIT PAPER MODAL ========== -->
+<div class="modal-overlay" id="editPaperModal" style="display:none" onclick="if(event.target===this)closeEditPaperModal()">
+  <div class="modal-box">
+    <div class="modal-header"><h3>✏️ Edit Paper</h3><button class="modal-close" onclick="closeEditPaperModal()">✕</button></div>
+    <input type="hidden" id="editPaperId"/>
+    <div class="modal-grid">
+      <div class="form-group" style="grid-column:1/-1"><label>Paper Title <span class="req">*</span></label><input type="text" id="editPaperTitle"/></div>
+      <div class="form-group"><label>Authors <span class="req">*</span></label><input type="text" id="editPaperAuthors"/></div>
+      <div class="form-group"><label>Year</label><input type="number" id="editPaperYear"/></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Referral Link</label><input type="url" id="editPaperLink"/></div>
+      <div class="form-group" style="grid-column:1/-1"><label>Tags (comma separated)</label><input type="text" id="editPaperTags"/></div>
+    </div>
+    <div class="modal-actions" style="margin-top:.75rem;">
+      <button class="btn-primary" style="width:auto;padding:10px 28px;" onclick="submitEditPaper()">Save Changes</button>
+      <button class="btn-outline" onclick="closeEditPaperModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== EDIT TEAM MODAL ========== -->
+<div class="modal-overlay" id="editTeamModal" style="display:none" onclick="if(event.target===this)closeEditTeamModal()">
+  <div class="modal-box" style="max-width:480px;">
+    <div class="modal-header"><h3>✏️ Edit Team</h3><button class="modal-close" onclick="closeEditTeamModal()">✕</button></div>
+    <input type="hidden" id="editTeamId"/>
+    <div class="form-group"><label>Team Name <span class="req">*</span></label><input type="text" id="editTeamName"/></div>
+    <div class="form-group"><label>Research Topic <span class="req">*</span></label><input type="text" id="editTeamTopic"/></div>
+    <div class="form-group"><label>Status</label>
+      <select id="editTeamStatus"><option value="Forming">Forming</option><option value="Active">Active</option></select>
+    </div>
+    <div class="modal-actions" style="margin-top:.75rem;">
+      <button class="btn-primary" style="width:auto;padding:10px 28px;" onclick="submitEditTeam()">Save Changes</button>
+      <button class="btn-outline" onclick="closeEditTeamModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== NOTICE READ RECEIPTS MODAL ========== -->
+<div class="modal-overlay" id="noticeReadsModal" style="display:none" onclick="if(event.target===this)closeNoticeReadsModal()">
+  <div class="modal-box" style="max-width:500px;">
+    <div class="modal-header"><h3>👁️ Read Receipts</h3><button class="modal-close" onclick="closeNoticeReadsModal()">✕</button></div>
+    <div id="noticeReadsBody"><p style="color:var(--text3);">Loading...</p></div>
+    <div class="modal-actions" style="margin-top:1rem;"><button class="btn-outline" onclick="closeNoticeReadsModal()">Close</button></div>
+  </div>
+</div>
+
 <!-- Hidden inputs -->
 <input type="file" id="csvImportInput" accept=".csv" style="display:none" onchange="handleCSVImport(this)"/>
 <input type="file" id="profilePicInput" accept="image/*" style="display:none" onchange="handleProfilePicChange(this)"/>
@@ -166,33 +209,16 @@
 <!-- ========== TEAM CHAT MODAL ========== -->
 <div class="modal-overlay chat-modal-overlay" id="chatModal" style="display:none">
   <div class="chat-modal-box">
-    <!-- Chat Header -->
     <div class="chat-header">
       <div class="chat-header-left">
         <div class="chat-header-icon">💬</div>
-        <div>
-          <div class="chat-header-title" id="chatModalTitle">Team Chat</div>
-          <div class="chat-header-sub">Real-time · All messages saved</div>
-        </div>
+        <div><div class="chat-header-title" id="chatModalTitle">Team Chat</div><div class="chat-header-sub">Real-time · All messages saved</div></div>
       </div>
       <button class="modal-close" onclick="closeChatModal()" style="flex-shrink:0;">✕</button>
     </div>
-
-    <!-- Messages area -->
-    <div class="chat-messages" id="chatMessages">
-      <div class="chat-loading">Loading messages...</div>
-    </div>
-
-    <!-- Input area -->
+    <div class="chat-messages" id="chatMessages"><div class="chat-loading">Loading messages...</div></div>
     <div class="chat-input-area">
-      <textarea
-        class="chat-input"
-        id="chatInput"
-        placeholder="Type a message... (Enter to send, Shift+Enter for new line)"
-        rows="1"
-        onkeydown="chatKeydown(event)"
-        oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'"
-      ></textarea>
+      <textarea class="chat-input" id="chatInput" placeholder="Type a message... (Enter to send)" rows="1" onkeydown="chatKeydown(event)" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'"></textarea>
       <button class="chat-send-btn" onclick="sendMessage()">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
       </button>
@@ -203,8 +229,7 @@
 <!-- ========== SIDEBAR ========== -->
 <aside class="sidebar" id="sidebar">
   <div class="sidebar-logo">
-        <img src="IMG/logo.jpg" alt="Club Logo"/> 
-      </div> 
+    <img src="IMG/logo.jpg" alt="Club Logo"/>
   </div>
   <nav class="sidebar-nav">
     <div class="nav-section-label">Main</div>
@@ -216,10 +241,12 @@
     <div class="nav-item" data-page="papers">📄 &nbsp;Paper Library</div>
     <div class="nav-item" data-page="teams">🔬 &nbsp;Project Teams &amp; Chat</div>
     <div class="nav-item" data-page="mentors">👨‍🏫 &nbsp;Mentors</div>
-    <div class="nav-item" data-page="seminars">🎓 &nbsp;Seminars</div>
+    <div class="nav-item" data-page="executives">👔 &nbsp;Executive Panel</div>
     <div class="nav-section-label" style="margin-top:1.25rem;">Community</div>
     <div class="nav-item" data-page="leaderboard">🏆 &nbsp;Leaderboard</div>
     <div class="nav-item" data-page="profile">👤 &nbsp;My Profile</div>
+    <div class="nav-section-label moderator-only" style="margin-top:1.25rem;">Moderator</div>
+    <div class="nav-item moderator-only" data-page="moderator">🛡️ &nbsp;Moderator Panel</div>
     <div class="nav-section-label admin-only" style="margin-top:1.25rem;">Admin</div>
     <div class="nav-item admin-only" data-page="admin">⚙️ &nbsp;Admin Panel</div>
   </nav>
@@ -330,6 +357,221 @@
       <div id="noticeList"></div>
     </div>
   </main>
+
+  <!-- PAPER LIBRARY -->
+  <main class="page" id="page-papers">
+    <div class="page-header"><h2 class="page-title">📄 Research Paper Library</h2><p class="page-sub">Papers shared by club members. Adding a paper earns +10 pts.</p></div>
+    <div class="card">
+      <div class="card-header-row"><h3 class="card-title" style="margin-bottom:0;">All Papers</h3><button class="btn-outline" onclick="togglePaperForm()">+ Add Paper</button></div>
+      <div class="notice-form" id="paperForm">
+        <div class="modal-grid">
+          <div class="form-group" style="grid-column:1/-1"><label>Paper Title <span class="req">*</span></label><input type="text" id="paperTitle" placeholder="Full title of the paper"/></div>
+          <div class="form-group"><label>Authors <span class="req">*</span></label><input type="text" id="paperAuthors" placeholder="Author 1, Author 2..."/></div>
+          <div class="form-group"><label>Year</label><input type="number" id="paperYear" placeholder="2025"/></div>
+          <div class="form-group" style="grid-column:1/-1"><label>Referral Link <span style="font-size:11px;color:var(--text3);font-weight:400;">(Google Scholar, ResearchGate, publisher page, arXiv, etc.)</span></label><input type="url" id="paperLink" placeholder="https://scholar.google.com/..."/></div>
+          <div class="form-group" style="grid-column:1/-1"><label>Tags (comma separated)</label><input type="text" id="paperTags" placeholder="ML, Computer Vision, NLP"/></div>
+          <div class="form-group" style="grid-column:1/-1">
+            <label>Attach PDF <span style="font-size:11px;color:var(--text3);font-weight:400;">(optional, max 5MB)</span></label>
+            <div class="pdf-upload-area" id="pdfUploadArea" onclick="document.getElementById('paperPdfInput').click()"><span id="pdfUploadLabel">📎 Click to attach a PDF file</span></div>
+            <input type="file" id="paperPdfInput" accept=".pdf" style="display:none" onchange="handlePdfSelect(this)"/>
+          </div>
+        </div>
+        <div class="form-actions"><button class="btn-primary" style="width:auto;padding:10px 24px;" onclick="submitPaper()">Add to Library</button><button class="btn-outline" onclick="togglePaperForm()">Cancel</button></div>
+      </div>
+      <div id="paperList"></div>
+    </div>
+  </main>
+
+  <!-- PROJECT TEAMS -->
+  <main class="page" id="page-teams">
+    <div class="page-header"><h2 class="page-title">🔬 Project Teams</h2><p class="page-sub">Join or form research project teams</p></div>
+    <div class="card">
+      <div class="card-header-row"><h3 class="card-title" style="margin-bottom:0;">All Teams</h3><button class="btn-outline" onclick="toggleTeamForm()">+ Create Team</button></div>
+      <div class="notice-form" id="teamForm">
+        <div class="modal-grid">
+          <div class="form-group"><label>Team Name <span class="req">*</span></label><input type="text" id="teamName" placeholder="e.g. NLP Research Group"/></div>
+          <div class="form-group"><label>Research Topic <span class="req">*</span></label><input type="text" id="teamTopic" placeholder="e.g. Bangla NLP"/></div>
+          <div class="form-group"><label>Lead (name)</label><input type="text" id="teamLead" placeholder="Leave blank for yourself"/></div>
+          <div class="form-group"><label>Status</label><select id="teamStatus"><option value="Forming">Forming</option><option value="Active">Active</option></select></div>
+        </div>
+        <div class="form-actions"><button class="btn-primary" style="width:auto;padding:10px 24px;" onclick="submitTeam()">Create Team</button><button class="btn-outline" onclick="toggleTeamForm()">Cancel</button></div>
+      </div>
+      <div id="teamList" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:.5rem;"></div>
+    </div>
+  </main>
+
+  <!-- MENTORS -->
+  <main class="page" id="page-mentors">
+    <div class="page-header"><h2 class="page-title">👨‍🏫 Supervisors &amp; Mentors</h2><p class="page-sub">Faculty supervisors and industry mentors available for guidance</p></div>
+    <div class="card">
+      <div class="card-header-row"><h3 class="card-title" style="margin-bottom:0;">Mentor Board</h3><button class="btn-outline admin-only" onclick="toggleMentorForm()">+ Add Mentor</button></div>
+      <div class="notice-form admin-only" id="mentorForm">
+        <div class="modal-grid">
+          <div class="form-group"><label>Name <span class="req">*</span></label><input type="text" id="mentorName" placeholder="Dr. Full Name"/></div>
+          <div class="form-group"><label>Title</label><input type="text" id="mentorTitle" placeholder="e.g. Club Supervisor"/></div>
+          <div class="form-group"><label>Department / Organization</label><input type="text" id="mentorDept" placeholder="e.g. CS Dept"/></div>
+          <div class="form-group"><label>Email</label><input type="email" id="mentorEmail" placeholder="mentor@university.edu"/></div>
+          <div class="form-group" style="grid-column:1/-1"><label>Expertise <span class="req">*</span></label><input type="text" id="mentorExpertise" placeholder="e.g. Machine Learning, NLP"/></div>
+        </div>
+        <div class="form-actions"><button class="btn-primary" style="width:auto;padding:10px 24px;" onclick="submitMentor()">Add Mentor</button><button class="btn-outline" onclick="toggleMentorForm()">Cancel</button></div>
+      </div>
+      <div id="mentorList" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:.5rem;"></div>
+    </div>
+  </main>
+
+  <!-- EXECUTIVE PANEL (replaces Seminars) -->
+  <main class="page" id="page-executives">
+    <div class="page-header"><h2 class="page-title">👔 Executive Panel</h2><p class="page-sub">Club executives and leadership members</p></div>
+    <div class="card">
+      <div class="card-header-row"><h3 class="card-title" style="margin-bottom:0;">Executive Board</h3><button class="btn-outline admin-only" onclick="toggleExecForm()">+ Add Executive</button></div>
+      <div class="notice-form admin-only" id="execForm">
+        <div class="modal-grid">
+          <div class="form-group"><label>Name <span class="req">*</span></label><input type="text" id="execName" placeholder="Full name"/></div>
+          <div class="form-group"><label>Position / Title <span class="req">*</span></label><input type="text" id="execTitle" placeholder="e.g. President, General Secretary"/></div>
+          <div class="form-group"><label>Department</label><input type="text" id="execDept" placeholder="e.g. CS Dept"/></div>
+          <div class="form-group"><label>Email</label><input type="email" id="execEmail" placeholder="exec@university.edu"/></div>
+          <div class="form-group" style="grid-column:1/-1"><label>Responsibilities</label><input type="text" id="execResp" placeholder="e.g. Overseeing events, managing member records"/></div>
+        </div>
+        <div class="form-actions"><button class="btn-primary" style="width:auto;padding:10px 24px;" onclick="submitExecutive()">Add Executive</button><button class="btn-outline" onclick="toggleExecForm()">Cancel</button></div>
+      </div>
+      <div id="execList" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:.5rem;"></div>
+    </div>
+  </main>
+
+  <!-- LEADERBOARD -->
+  <main class="page" id="page-leaderboard">
+    <div class="page-header"><h2 class="page-title">Leaderboard</h2><p class="page-sub">Top members by points — updates live</p></div>
+    <div class="card"><h3 class="card-title">🏆 Rankings</h3><div class="leaderboard-list" id="leaderboardList"></div></div>
+    <div class="card"><h3 class="card-title">💡 How to Earn Points</h3>
+      <div class="points-grid">
+        <div class="points-row"><span>✅ Session attendance (given by admin/moderator)</span><strong>+10 pts</strong></div>
+        <div class="points-row"><span>📅 Event attendance (marked by admin)</span><strong>+15–20 pts</strong></div>
+        <div class="points-row"><span>📄 Adding a research paper</span><strong>+10 pts</strong></div>
+        <div class="points-row"><span>📢 Posting a notice</span><strong>+5 pts</strong></div>
+        <div class="points-row"><span>🔥 7-day streak badge</span><strong>Unlocked!</strong></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- PROFILE -->
+  <main class="page" id="page-profile">
+    <div class="page-header"><h2 class="page-title">My Profile</h2><p class="page-sub">Your membership overview</p></div>
+    <div class="card">
+      <div class="profile-header">
+        <div style="position:relative;flex-shrink:0;">
+          <div class="profile-avatar" id="profileAvatarEl" style="overflow:hidden;"></div>
+          <button class="pic-upload-btn" onclick="triggerProfilePicUpload()" title="Change photo">📷</button>
+        </div>
+        <div>
+          <div class="profile-name" id="profileName">Loading...</div>
+          <div class="profile-id" id="profileDept"></div>
+          <span class="role-badge" id="profileRoleBadge">Member</span>
+          <div style="display:flex;gap:8px;margin-top:.75rem;flex-wrap:wrap;">
+            <button class="btn-outline" style="font-size:13px;padding:6px 14px;" onclick="triggerProfilePicUpload()">📷 Change Photo</button>
+            <button class="btn-outline" style="font-size:13px;padding:6px 14px;" onclick="openChangePwModal()">🔒 Change Password</button>
+          </div>
+        </div>
+      </div>
+      <div class="profile-stats">
+        <div class="profile-stat"><div class="pstat-value" id="pstatAttendance">—</div><div class="pstat-label">Attendance</div></div>
+        <div class="profile-stat"><div class="pstat-value" id="pstatEvents">—</div><div class="pstat-label">Events</div></div>
+        <div class="profile-stat"><div class="pstat-value" id="pstatPoints">—</div><div class="pstat-label">Points</div></div>
+        <div class="profile-stat"><div class="pstat-value" id="pstatRank">—</div><div class="pstat-label">Rank</div></div>
+      </div>
+    </div>
+    <div class="card"><h3 class="card-title">Member Details</h3>
+      <table class="data-table">
+        <tr><td class="detail-label">Member Since</td><td>September 2024</td></tr>
+        <tr><td class="detail-label">Department</td><td id="profileDeptFull"></td></tr>
+        <tr><td class="detail-label">Membership Valid</td><td>Until December 2026</td></tr>
+        <tr><td class="detail-label">Email</td><td id="profileEmail">—</td></tr>
+      </table>
+    </div>
+    <div class="card"><h3 class="card-title">Badges — Earn them all!</h3><div class="badge-grid" id="profileBadgeGrid"></div></div>
+  </main>
+
+  <!-- MODERATOR PAGE -->
+  <main class="page" id="page-moderator">
+    <div class="page-header"><h2 class="page-title">🛡️ Moderator Panel</h2><p class="page-sub">Give attendance and post notices</p></div>
+    <div class="card"><h3 class="card-title">Quick Actions</h3>
+      <div class="admin-actions">
+        <button class="btn-admin" onclick="openBulkAttendance()">📋 Give Bulk Attendance</button>
+        <button class="btn-admin" onclick="navigateTo('notices');setTimeout(toggleNoticeForm,150)">📢 Post a Notice</button>
+      </div>
+    </div>
+  </main>
+
+  <!-- ADMIN -->
+  <main class="page" id="page-admin">
+    <div class="page-header"><h2 class="page-title">⚙️ Admin Panel</h2><p class="page-sub">Full club management</p></div>
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-label">Total Members</div><div class="stat-value" id="adminTotalMembers">—</div></div>
+      <div class="stat-card"><div class="stat-label">Active Members</div><div class="stat-value" id="adminActiveMembers">—</div></div>
+      <div class="stat-card"><div class="stat-label">Total Points Given</div><div class="stat-value" id="adminTotalPoints">—</div></div>
+      <div class="stat-card"><div class="stat-label">Active Notices</div><div class="stat-value" id="adminTotalNotices">—</div></div>
+    </div>
+    <div class="card"><h3 class="card-title">Quick Actions</h3>
+      <div class="admin-actions">
+        <button class="btn-admin" onclick="openAddMemberModal()">➕ Add New Member</button>
+        <button class="btn-admin" onclick="triggerCSVImport()">📂 Import via CSV</button>
+        <button class="btn-admin" onclick="openBulkAttendance()">📋 Give Bulk Attendance</button>
+        <button class="btn-admin" onclick="exportMembersCSV()">📥 Export Members CSV</button>
+        <button class="btn-admin" onclick="openAddEventModal()">📅 Create New Event</button>
+        <button class="btn-admin" onclick="navigateTo('notices');setTimeout(toggleNoticeForm,150)">📢 Post a Notice</button>
+      </div>
+    </div>
+    <!-- Pending Approvals -->
+    <div class="card" id="pendingApprovalsCard">
+      <h3 class="card-title">⏳ Pending Approvals</h3>
+      <div id="pendingApprovalsList"><p style="color:var(--text3);font-size:14px;">Loading...</p></div>
+    </div>
+    <div class="card">
+      <div class="card-header-row"><h3 class="card-title" style="margin-bottom:0;">Member List</h3>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="btn-outline" onclick="triggerCSVImport()">📂 CSV Import</button><button class="btn-outline" onclick="openAddMemberModal()">➕ Add Member</button></div>
+      </div>
+      <div style="overflow-x:auto;"><table class="data-table"><thead><tr><th>Name</th><th>Student ID</th><th>Dept</th><th>Role</th><th>Status</th><th>Pts</th><th>Action</th></tr></thead><tbody id="adminMemberTbody"></tbody></table></div>
+    </div>
+    <div class="card"><h3 class="card-title">📂 CSV Import Format</h3>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:.75rem;">Your CSV should have these headers (order doesn't matter):</p>
+      <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:.75rem 1rem;font-family:monospace;font-size:13px;color:var(--text);overflow-x:auto;white-space:nowrap;">Name, StudentID, Password, Department, Email, Phone, Role, Status</div>
+      <p style="font-size:12px;color:var(--text3);margin-top:.75rem;">Password defaults to StudentID if blank. Role defaults to "member". Status defaults to "active".</p>
+      <button class="btn-outline" style="margin-top:.75rem;font-size:13px;" onclick="downloadSampleCSV()">⬇️ Download Sample CSV</button>
+    </div>
+  </main>
+</div>
+
+<script type="module" src="js/dashboard.js"></script>
+<script>
+function _call(name, ...args) {
+  if (window.APP && window.APP[name]) { window.APP[name](...args); }
+  else { setTimeout(() => { if (window.APP && window.APP[name]) window.APP[name](...args); }, 500); }
+}
+const _fns = ["toggleSidebar","navigateTo","toggleTheme","doRegisterEvent","doDeleteEvent",
+  "openAddEventModal","closeAddEventModal","submitAddEvent","openEventAdmin","closeEventAdmin",
+  "switchEvTab","doToggleEventAtt","toggleNoticeForm","postNotice","doDeleteNotice","openNoticeReads",
+  "openChangePwModal","closeChangePwModal","submitChangePassword","triggerProfilePicUpload",
+  "handleProfilePicChange","togglePaperForm","submitPaper","doDeletePaper","handlePdfSelect",
+  "downloadPdf","openEditPaper","submitEditPaper","closeEditPaperModal","requestPaperUnpublish",
+  "toggleTeamForm","submitTeam","doJoinTeam","doDeleteTeam","openEditTeam","submitEditTeam","closeEditTeamModal","requestKickMember",
+  "openChat","closeChatModal","sendMessage","chatKeydown","doDeleteChatMsg",
+  "toggleMentorForm","submitMentor","doDeleteMentor",
+  "toggleExecForm","submitExecutive","doDeleteExecutive",
+  "openAddMemberModal","closeAddMemberModal","submitAddMember","doRemoveMember","resolveApproval",
+  "exportMembersCSV","triggerCSVImport","handleCSVImport","closeCSVPreview","submitCSVImport",
+  "openBulkAttendance","closeBulkAttendance","submitBulkAttendance","filterBulkAttendance",
+  "toggleNotificationDropdown","doMarkAllRead","doClearAllNotifications","doDeleteNotification","handleNotifClick",
+  "logout"];
+_fns.forEach(fn => { window[fn] = (...args) => _call(fn, ...args); });
+
+function downloadSampleCSV(){
+  const csv=`Name,StudentID,Password,Department,Email,Phone,Role,Status\nRahim Ahmed,2025-CS-001,rahim123,CS Dept,rahim@univ.edu,01711-000001,member,active\nSumaiya Islam,2025-EEE-002,sumaiya123,EEE Dept,sumaiya@univ.edu,01711-000002,member,active`;
+  const blob=new Blob([csv],{type:"text/csv"}); const url=URL.createObjectURL(blob);
+  const a=document.createElement("a"); a.href=url; a.download="AIUB_RD_Import_Sample.csv";
+  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+</script>
+</body>
+</html>
 
   <!-- PAPER LIBRARY -->
   <main class="page" id="page-papers">
