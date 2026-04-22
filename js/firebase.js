@@ -306,11 +306,33 @@ export async function addTeam(team){
   const ref = await addDoc(collection(db,"teams"), team);
   return ref.id;
 }
+export async function updateTeam(firestoreId, data){
+  await updateDoc(doc(db,"teams",firestoreId), data);
+}
 export async function joinTeam(firestoreId, uid){
   await updateDoc(doc(db,"teams",firestoreId), { members: arrayUnion(uid) });
 }
+export async function kickMemberFromTeam(firestoreId, memberId){
+  await updateDoc(doc(db,"teams",firestoreId), { members: arrayRemove(memberId) });
+}
 export async function deleteTeam(firestoreId){
   await deleteDoc(doc(db,"teams",firestoreId));
+}
+
+// ---- KICK REQUESTS (team kick needing admin approval) ----
+export async function requestKick(teamId, targetId, targetName, requesterId, requesterName){
+  await addDoc(collection(db,"kickRequests"), {
+    teamId, targetId, targetName, requesterId, requesterName,
+    status:"pending", timestamp: Date.now()
+  });
+}
+export async function getKickRequests(){
+  const snap = await getDocs(query(collection(db,"kickRequests"), orderBy("timestamp","desc")));
+  return snap.docs.map(d=>({ firestoreId:d.id, ...d.data() }));
+}
+export async function resolveKickRequest(firestoreId, approved, teamId, targetId){
+  if(approved) await kickMemberFromTeam(teamId, targetId);
+  await deleteDoc(doc(db,"kickRequests",firestoreId));
 }
 
 // ---- RESEARCH — MENTORS ----
@@ -331,6 +353,56 @@ export async function addMentor(mentor){
 }
 export async function deleteMentor(firestoreId){
   await deleteDoc(doc(db,"mentors",firestoreId));
+}
+
+// ---- EXECUTIVE PANEL ----
+export async function getExecutives(){
+  const snap = await getDocs(collection(db,"executives"));
+  if(snap.empty) return [];
+  return snap.docs.map(d=>({ firestoreId:d.id, ...d.data() }));
+}
+export async function addExecutive(exec){
+  const ref = await addDoc(collection(db,"executives"), exec);
+  return ref.id;
+}
+export async function deleteExecutive(firestoreId){
+  await deleteDoc(doc(db,"executives",firestoreId));
+}
+
+// ---- PAPER UPDATE & UNPUBLISH ----
+export async function updatePaper(firestoreId, data){
+  await updateDoc(doc(db,"papers",firestoreId), data);
+}
+export async function requestUnpublish(paperId, paperTitle, requesterId){
+  await addDoc(collection(db,"unpublishRequests"), {
+    paperId, paperTitle, requesterId,
+    status:"pending", timestamp: Date.now()
+  });
+}
+export async function getUnpublishRequests(){
+  const snap = await getDocs(query(collection(db,"unpublishRequests"), orderBy("timestamp","desc")));
+  return snap.docs.map(d=>({ firestoreId:d.id, ...d.data() }));
+}
+export async function resolveUnpublishRequest(firestoreId, approved, paperId){
+  if(approved) await updateDoc(doc(db,"papers",paperId), { published:false });
+  await deleteDoc(doc(db,"unpublishRequests",firestoreId));
+}
+export async function republishPaper(paperId){
+  await updateDoc(doc(db,"papers",paperId), { published:true });
+}
+
+// ---- NOTICE READ RECEIPTS ----
+export async function markNoticeRead(noticeId, userId, userName){
+  await setDoc(doc(db,"noticeReads",noticeId+"_"+userId), {
+    noticeId, userId, userName, readAt: Date.now()
+  });
+}
+export async function getNoticeReads(noticeId){
+  const snap = await getDocs(query(
+    collection(db,"noticeReads"),
+    orderBy("readAt","asc")
+  ));
+  return snap.docs.map(d=>d.data()).filter(r=>r.noticeId===noticeId);
 }
 
 // ---- RESEARCH — SEMINARS ----
