@@ -314,6 +314,86 @@ body.is-admin .nav-section-label.admin-only{display:block!important;}
 .event-meta{font-size:12px;color:var(--text2);margin-bottom:5px;}
 
 /* =============================================
+   NOTIFICATION SYSTEM
+   ============================================= */
+
+/* Bell button */
+.notif-bell-wrap{position:relative;}
+.notif-bell-btn{position:relative;width:38px;height:38px;border-radius:50%;background:none;border:1px solid var(--border);color:var(--text2);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .15s,color .15s;}
+.notif-bell-btn:hover{background:var(--surface2);color:var(--text);}
+
+/* Unread badge on bell */
+.notif-badge{position:absolute;top:-3px;right:-3px;min-width:18px;height:18px;border-radius:9px;background:#E24B4A;color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 4px;border:2px solid var(--surface);line-height:1;}
+
+/* Dropdown panel */
+.notif-dropdown{
+  position:absolute;top:calc(100% + 10px);right:0;width:360px;max-width:calc(100vw - 2rem);
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  box-shadow:0 8px 32px rgba(0,0,0,.18);z-index:500;
+  opacity:0;visibility:hidden;transform:translateY(-8px);
+  transition:opacity .2s,transform .2s,visibility .2s;
+}
+.notif-dropdown.open{opacity:1;visibility:visible;transform:translateY(0);}
+
+/* Dropdown header */
+.notif-dropdown-header{display:flex;align-items:center;justify-content:space-between;padding:.75rem 1rem;border-bottom:1px solid var(--border);}
+.notif-dropdown-title{font-size:14px;font-weight:700;color:var(--text);}
+.notif-action-btn{font-size:11px;padding:4px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:none;color:var(--text2);cursor:pointer;font-family:inherit;transition:background .15s;}
+.notif-action-btn:hover{background:var(--surface2);}
+.notif-action-danger:hover{background:var(--danger-light);color:var(--danger);border-color:var(--danger);}
+
+/* Notification list scroll area */
+.notif-list{max-height:400px;overflow-y:auto;}
+
+/* Empty state */
+.notif-empty{text-align:center;padding:2rem 1rem;color:var(--text3);font-size:14px;}
+
+/* Individual notification item */
+.notif-item{
+  display:flex;align-items:flex-start;gap:.75rem;
+  padding:.75rem 1rem;border-bottom:1px solid var(--border);
+  cursor:pointer;transition:background .15s;position:relative;
+}
+.notif-item:last-child{border-bottom:none;}
+.notif-item:hover{background:var(--surface2);}
+.notif-unread{background:var(--primary-light);}
+.notif-unread:hover{background:var(--primary-light);filter:brightness(.97);}
+
+/* Notification icon circle */
+.notif-icon{
+  width:36px;height:36px;border-radius:50%;background:var(--surface2);
+  display:flex;align-items:center;justify-content:center;
+  font-size:16px;flex-shrink:0;margin-top:1px;
+}
+.notif-unread .notif-icon{background:var(--primary-light);}
+
+/* Text content */
+.notif-content{flex:1;min-width:0;}
+.notif-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px;line-height:1.3;}
+.notif-body{font-size:12px;color:var(--text2);line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.notif-time{font-size:11px;color:var(--text3);margin-top:3px;}
+
+/* Unread dot */
+.notif-dot{width:8px;height:8px;border-radius:50%;background:var(--primary);flex-shrink:0;margin-top:5px;}
+
+/* Delete button on hover */
+.notif-del{
+  position:absolute;top:6px;right:6px;
+  width:18px;height:18px;border-radius:50%;
+  background:var(--surface2);color:var(--text3);
+  border:none;font-size:9px;cursor:pointer;
+  display:none;align-items:center;justify-content:center;
+  line-height:1;
+}
+.notif-item:hover .notif-del{display:flex;}
+.notif-del:hover{background:var(--danger-light);color:var(--danger);}
+
+/* Mobile: full-width dropdown */
+@media(max-width:480px){
+  .notif-dropdown{right:-1rem;width:calc(100vw - 1rem);}
+}
+
+/* =============================================
    TEAM CHAT
    ============================================= */
 
