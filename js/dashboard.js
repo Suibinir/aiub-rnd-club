@@ -21,7 +21,10 @@ import {
   getSeminars, addSeminar, deleteSeminar as fbDeleteSeminar,
   saveBulkAttendance,
   listenToLeaderboard, listenToNotices, listenToEvents,
-  sendChatMessage, getChatMessages, listenToChat, deleteChatMessage
+  sendChatMessage, getChatMessages, listenToChat, deleteChatMessage,
+  sendNotification, broadcastNotification,
+  getNotifications, markNotificationRead, markAllNotificationsRead,
+  deleteNotification, clearAllNotifications, listenToNotifications
 } from "./firebase.js";
 
 // ---- AUTH GUARD ----
@@ -32,7 +35,7 @@ const isAdmin = currentUser.role === "admin";
 
 // ---- APP STATE ----
 let stats = {}, attendance = [], badges = [], streak = [], notices = [], events = [], leaderboard = [];
-let unsubLeaderboard, unsubNotices, unsubEvents;
+let unsubLeaderboard, unsubNotices, unsubEvents, unsubNotifications;
 
 // ---- PENDING PDF ----
 let _pendingPdfData = null, _pendingPdfName = null;
@@ -58,9 +61,10 @@ document.addEventListener("DOMContentLoaded", async ()=>{
       getStreak(uid)
     ]);
     // Real-time listeners
-    unsubLeaderboard = listenToLeaderboard(lb=>{ leaderboard=lb; renderLeaderboard(); refreshStats(); });
-    unsubNotices     = listenToNotices(n=>{ notices=n; renderNotices(); updateNoticeBadge(); });
-    unsubEvents      = listenToEvents(e=>{ events=e; renderEvents(); renderHomeEvents(); });
+    unsubLeaderboard  = listenToLeaderboard(lb=>{ leaderboard=lb; renderLeaderboard(); refreshStats(); });
+    unsubNotices      = listenToNotices(n=>{ notices=n; renderNotices(); updateNoticeBadge(); });
+    unsubEvents       = listenToEvents(e=>{ events=e; renderEvents(); renderHomeEvents(); });
+    unsubNotifications = listenToNotifications(uid, notifs=>{ renderNotificationBell(notifs); });
     renderHome();
     renderAttendance();
     renderProfile();
@@ -280,6 +284,7 @@ async function doRegisterEvent(fid, btn){
     await registerForEvent(fid, uid);
     const ev=events.find(e=>(e.firestoreId||String(e.id))===fid);
     checkBadge("team_player", true);
+    notifyEventRegistered(ev ? ev.title : "the event");
     showToast("🎉 Registered"+(ev?" for '"+ev.title+"'":"")+"!");
   } catch(e){ showToast("❌ Failed to register","warn"); btn.disabled=false; btn.textContent="Register"; }
 }
@@ -299,7 +304,9 @@ async function submitAddEvent(){
   const btn=document.querySelector("#addEventForm .btn-primary"); btn.disabled=true; btn.textContent="Creating...";
   try {
     await createEvent({ day:v("evDay")||"01", month:v("evMonth")||"Jan", year:v("evYear")||new Date().getFullYear(), title, description, venue, time:v("evTime")||"TBD", duration:v("evDuration")||"TBD", capacity:parseInt(v("evCapacity"))||50, category:v("evCategory"), points:parseInt(v("evPoints"))||20, organizer:v("evOrganizer")||currentUser.name, past:false, registrants:[], attendees:[] });
-    closeAddEventModal(); showToast("✅ Event '"+title+"' created!");
+    closeAddEventModal();
+    notifyAllEvent(title);
+    showToast("✅ Event '"+title+"' created!");
   } catch(e){ document.getElementById("addEventError").textContent="❌ Error: "+e.message; }
   btn.disabled=false; btn.textContent="Create Event";
 }
@@ -341,10 +348,11 @@ async function doToggleEventAtt(fid, memberId, attended, pts){
     await markEventAttendee(fid, memberId, attended);
     if(attended){
       await addPointsToMember(memberId, pts);
-      // Update member stats
       const mStats = await getStats(memberId);
       mStats.eventsAttended = (mStats.eventsAttended||0)+1;
       await saveStats(memberId, mStats);
+      const ev = events.find(e=>(e.firestoreId||String(e.id))===fid);
+      notifyEventAttended(memberId, ev ? ev.title : "an event", pts);
     } else {
       await addPointsToMember(memberId, -pts);
       const mStats = await getStats(memberId);
@@ -389,6 +397,8 @@ async function postNotice(){
     await addPointsToMember(uid,5);
     await saveStats(uid, stats);
     checkBadge("reporter", stats.noticesPosted>=3);
+    // Notify all members
+    notifyAllNotice(title);
     document.getElementById("noticeTitle").value="";
     document.getElementById("noticeContent").value="";
     toggleNoticeForm();
@@ -568,6 +578,7 @@ async function submitPaper(){
     await renderPapers();
     await addPointsToMember(uid, 10);
     stats.points=(stats.points||0)+10;
+    notifyAllPaper(title, currentUser.name);
     showToast("📄 Paper added! +10 pts");
   } catch(e){ showToast("❌ Error: "+e.message,"warn"); }
   btn.disabled=false; btn.textContent="Add to Library";
@@ -720,9 +731,12 @@ async function sendMessage(){
       senderInitials: currentUser.initials,
       text
     });
+    // Notify team members (throttled — only notify if last message was >60s ago to avoid spam)
+    const teamName = document.getElementById("chatModalTitle").textContent.replace("💬 ","");
+    notifyTeamChat(_activeChatTeamId, teamName, currentUser.name, text);
   } catch(e){
     showToast("❌ Failed to send message","warn");
-    input.value = text; // restore
+    input.value = text;
   }
 }
 
@@ -800,7 +814,7 @@ async function submitSeminar(){
   const v=id=>document.getElementById(id).value.trim();
   const title=v("semTitle"),speaker=v("semSpeaker");
   if(!title||!speaker){ showToast("⚠️ Title and speaker required","warn"); return; }
-  try { await addSeminar({ title, speaker, date:v("semDate")||new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}), duration:v("semDuration")||"—", notes:v("semNotes"), attendees:[] }); document.getElementById("seminarForm").classList.remove("open"); document.getElementById("seminarForm").querySelectorAll("input,textarea").forEach(i=>i.value=""); await renderSeminars(); showToast("🎓 Seminar added!"); }
+  try { await addSeminar({ title, speaker, date:v("semDate")||new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"}), duration:v("semDuration")||"—", notes:v("semNotes"), attendees:[] }); document.getElementById("seminarForm").classList.remove("open"); document.getElementById("seminarForm").querySelectorAll("input,textarea").forEach(i=>i.value=""); await renderSeminars(); notifyAllSeminar(title, speaker); showToast("🎓 Seminar added!"); }
   catch(e){ showToast("❌ Error: "+e.message,"warn"); }
 }
 async function doDeleteSeminar(fid){ if(!confirm("Delete this seminar?")) return; try { await fbDeleteSeminar(fid); await renderSeminars(); } catch(e){ showToast("❌ Error","warn"); } }
@@ -854,7 +868,9 @@ async function submitAddMember(){
   try {
     const ok=await addMember({ id:mid, password:pwd, name, initials, role, dept, email, phone, year, status });
     if(!ok){ errEl.textContent="⚠️ A member with that ID already exists."; btn.disabled=false; btn.textContent="Add Member"; return; }
-    closeAddMemberModal(); await renderAdmin(); showToast("✅ Member '"+name+"' added!");
+    closeAddMemberModal(); await renderAdmin();
+    notifyNewMember(name);
+    showToast("✅ Member '"+name+"' added!");
   } catch(e){ errEl.textContent="❌ Error: "+e.message; }
   btn.disabled=false; btn.textContent="Add Member";
 }
@@ -939,8 +955,11 @@ async function submitBulkAttendance(){
     const records=[];
     selects.forEach((sel,i)=>{ records.push({ memberId:sel.dataset.id, date:todayStr, session, status:sel.value, note:noteInputs[i]?.value.trim()||"—" }); });
     await saveBulkAttendance(records);
+    // Notify each member of their individual attendance status
+    records.forEach(r => {
+      if(r.memberId !== uid) notifyAttendance(r.memberId, session, r.status);
+    });
     closeBulkAttendance();
-    // Refresh current user's data
     [stats, attendance] = await Promise.all([getStats(uid), getAttendance(uid)]);
     renderAttendance(); renderHome();
     showToast("✅ Attendance saved for "+records.length+" members!");
@@ -960,6 +979,7 @@ async function checkBadge(id, condition){
       await earnBadge(uid, id);
       renderHomeBadges(); renderProfileBadges();
       showToast("🏅 Badge unlocked: "+badge.name+"!");
+      notifyBadgeEarned(badge.name, badge.icon);
     } catch(e){ console.error("Badge error:",e); }
   }
 }
@@ -994,9 +1014,261 @@ async function logout(){
     if(unsubLeaderboard) unsubLeaderboard();
     if(unsubNotices) unsubNotices();
     if(unsubEvents) unsubEvents();
+    if(unsubNotifications) unsubNotifications();
     clearSession();
     window.location.href="index.html";
   }
+}
+
+// =============================================
+// NOTIFICATION SYSTEM
+// =============================================
+
+// --- Bell UI ---
+function renderNotificationBell(notifs){
+  const unread = notifs.filter(n=>!n.read).length;
+
+  // Update badge count
+  const badge = document.getElementById("notifBadge");
+  if(badge){
+    badge.textContent = unread > 9 ? "9+" : unread;
+    badge.style.display = unread > 0 ? "flex" : "none";
+  }
+
+  // If dropdown is open, re-render its content
+  const dropdown = document.getElementById("notifDropdown");
+  if(dropdown && dropdown.classList.contains("open")){
+    renderNotificationList(notifs);
+  }
+}
+
+function renderNotificationList(notifs){
+  const list = document.getElementById("notifList");
+  if(!list) return;
+
+  if(!notifs.length){
+    list.innerHTML = `<div class="notif-empty">
+      <div style="font-size:32px;margin-bottom:.5rem;">🔔</div>
+      <div>No notifications yet</div>
+      <div style="font-size:12px;color:var(--text3);margin-top:4px;">You're all caught up!</div>
+    </div>`;
+    return;
+  }
+
+  list.innerHTML = notifs.map(n => {
+    const time = formatNotifTime(n.timestamp);
+    return `<div class="notif-item ${n.read?"notif-read":"notif-unread"}" onclick="handleNotifClick('${n.id}','${n.link||""}')">
+      <div class="notif-icon">${n.icon||"🔔"}</div>
+      <div class="notif-content">
+        <div class="notif-title">${escHtml(n.title)}</div>
+        <div class="notif-body">${escHtml(n.body)}</div>
+        <div class="notif-time">${time}</div>
+      </div>
+      ${!n.read ? `<div class="notif-dot"></div>` : ""}
+      <button class="notif-del" onclick="event.stopPropagation();doDeleteNotification('${n.id}')" title="Remove">✕</button>
+    </div>`;
+  }).join("");
+}
+
+function formatNotifTime(ts){
+  if(!ts) return "";
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff/60000);
+  if(mins < 1) return "Just now";
+  if(mins < 60) return mins+"m ago";
+  const hrs = Math.floor(mins/60);
+  if(hrs < 24) return hrs+"h ago";
+  const days = Math.floor(hrs/24);
+  if(days < 7) return days+"d ago";
+  return new Date(ts).toLocaleDateString("en-GB",{day:"2-digit",month:"short"});
+}
+
+function toggleNotificationDropdown(){
+  const dropdown = document.getElementById("notifDropdown");
+  if(!dropdown) return;
+  const isOpen = dropdown.classList.toggle("open");
+  if(isOpen){
+    // Load current notifications and render
+    getNotifications(uid).then(notifs => renderNotificationList(notifs));
+  }
+}
+
+// Close dropdown when clicking outside
+document.addEventListener("click", e => {
+  const bell = document.getElementById("notifBellWrap");
+  if(bell && !bell.contains(e.target)){
+    const dd = document.getElementById("notifDropdown");
+    if(dd) dd.classList.remove("open");
+  }
+});
+
+async function handleNotifClick(notifId, link){
+  // Mark as read
+  try { await markNotificationRead(uid, notifId); } catch(e){}
+  // Navigate to the relevant page
+  if(link){
+    const dd = document.getElementById("notifDropdown");
+    if(dd) dd.classList.remove("open");
+    navigateTo(link);
+  }
+}
+
+async function doMarkAllRead(){
+  try {
+    await markAllNotificationsRead(uid);
+    showToast("✅ All notifications marked as read");
+  } catch(e){ showToast("❌ Error","warn"); }
+}
+
+async function doClearAllNotifications(){
+  if(!confirm("Clear all notifications?")) return;
+  try {
+    await clearAllNotifications(uid);
+    showToast("🗑 Notifications cleared");
+  } catch(e){ showToast("❌ Error","warn"); }
+}
+
+async function doDeleteNotification(notifId){
+  try { await deleteNotification(uid, notifId); }
+  catch(e){ showToast("❌ Error","warn"); }
+}
+
+// --- Helper: get all member IDs to broadcast to ---
+async function getAllMemberIds(){
+  const members = await getAllMembers();
+  return members.map(m => m.id).filter(id => id !== uid); // exclude self
+}
+
+// --- Trigger functions (called when actions happen) ---
+
+// Called when admin posts a notice
+async function notifyAllNotice(noticeTitle){
+  try {
+    const ids = await getAllMemberIds();
+    await broadcastNotification(ids, {
+      type:"notice", icon:"📢",
+      title:"New Notice Posted",
+      body: noticeTitle,
+      link:"notices"
+    });
+  } catch(e){ console.error("Notify error:",e); }
+}
+
+// Called when admin creates an event
+async function notifyAllEvent(eventTitle){
+  try {
+    const ids = await getAllMemberIds();
+    await broadcastNotification(ids, {
+      type:"event", icon:"📅",
+      title:"New Event Created",
+      body: eventTitle,
+      link:"events"
+    });
+  } catch(e){ console.error("Notify error:",e); }
+}
+
+// Called when admin marks bulk attendance — notify each member individually
+async function notifyAttendance(memberId, session, status){
+  try {
+    await sendNotification(memberId, {
+      type:"attendance", icon:"✅",
+      title: status==="Present" ? "Attendance Marked ✅" : status==="Late" ? "Marked Late 🕐" : "Marked Absent ❌",
+      body: `Your attendance for "${session}" was marked as ${status}.`,
+      link:"attendance"
+    });
+  } catch(e){ console.error("Notify error:",e); }
+}
+
+// Called when someone earns a badge
+async function notifyBadgeEarned(badgeName, badgeIcon){
+  try {
+    await sendNotification(uid, {
+      type:"badge", icon: badgeIcon||"🏅",
+      title:"Badge Unlocked! "+badgeIcon,
+      body:`You earned the "${badgeName}" badge. Keep it up!`,
+      link:"profile"
+    });
+  } catch(e){ console.error("Notify error:",e); }
+}
+
+// Called when a paper is added
+async function notifyAllPaper(paperTitle, addedBy){
+  try {
+    const ids = await getAllMemberIds();
+    await broadcastNotification(ids, {
+      type:"paper", icon:"📄",
+      title:"New Paper Added",
+      body:`${addedBy} added "${paperTitle}" to the library.`,
+      link:"papers"
+    });
+  } catch(e){ console.error("Notify error:",e); }
+}
+
+// Called when a new seminar is added
+async function notifyAllSeminar(seminarTitle, speaker){
+  try {
+    const ids = await getAllMemberIds();
+    await broadcastNotification(ids, {
+      type:"seminar", icon:"🎓",
+      title:"New Seminar Added",
+      body:`"${seminarTitle}" by ${speaker} has been added.`,
+      link:"seminars"
+    });
+  } catch(e){ console.error("Notify error:",e); }
+}
+
+// Called when a new team chat message arrives (only to team members, not sender)
+async function notifyTeamChat(teamId, teamName, senderName, messagePreview){
+  try {
+    const teams = await getTeams();
+    const team  = teams.find(t=>(t.firestoreId||String(t.id))===teamId);
+    if(!team) return;
+    const recipients = (team.members||[]).filter(id => id !== uid);
+    await broadcastNotification(recipients, {
+      type:"chat", icon:"💬",
+      title:`${teamName}`,
+      body:`${senderName}: ${messagePreview.slice(0,60)}${messagePreview.length>60?"…":""}`,
+      link:"teams"
+    });
+  } catch(e){ console.error("Notify error:",e); }
+}
+
+// Called when admin adds a new member
+async function notifyNewMember(memberName){
+  try {
+    const ids = await getAllMemberIds();
+    await broadcastNotification(ids, {
+      type:"member", icon:"👤",
+      title:"New Member Joined",
+      body:`${memberName} has joined the club.`,
+      link:"leaderboard"
+    });
+  } catch(e){ console.error("Notify error:",e); }
+}
+
+// Called when member registers for event
+async function notifyEventRegistered(eventTitle){
+  // Self-notification confirming registration
+  try {
+    await sendNotification(uid, {
+      type:"event", icon:"🎉",
+      title:"Registration Confirmed",
+      body:`You're registered for "${eventTitle}". See you there!`,
+      link:"events"
+    });
+  } catch(e){ console.error("Notify error:",e); }
+}
+
+// Called when admin marks event attendance for a member
+async function notifyEventAttended(memberId, eventTitle, pts){
+  try {
+    await sendNotification(memberId, {
+      type:"event", icon:"🎯",
+      title:"Event Attendance Marked",
+      body:`You attended "${eventTitle}" and earned +${pts} points!`,
+      link:"events"
+    });
+  } catch(e){ console.error("Notify error:",e); }
 }
 
 function showToast(msg,type="success"){
@@ -1023,5 +1295,6 @@ window.APP = {
   openAddMemberModal, closeAddMemberModal, submitAddMember, doRemoveMember,
   exportMembersCSV, triggerCSVImport, handleCSVImport, openCSVPreview, closeCSVPreview, submitCSVImport,
   openBulkAttendance, closeBulkAttendance, submitBulkAttendance,
+  toggleNotificationDropdown, doMarkAllRead, doClearAllNotifications, doDeleteNotification, handleNotifClick,
   logout
 };
