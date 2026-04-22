@@ -314,6 +314,56 @@ body.is-admin .nav-section-label.admin-only{display:block!important;}
 .event-meta{font-size:12px;color:var(--text2);margin-bottom:5px;}
 
 /* =============================================
+   FIXES & NEW FEATURES
+   ============================================= */
+
+/* FIX: Attendance pill colours (ensure they render correctly) */
+.pill { display:inline-block !important; font-size:11px; font-weight:700; border-radius:20px; padding:3px 10px; }
+.pill-present { background:var(--success-light) !important; color:var(--success) !important; }
+.pill-absent  { background:var(--danger-light) !important;  color:var(--danger) !important;  }
+.pill-late    { background:var(--warning-light) !important; color:var(--warning) !important; }
+
+/* Moderator role — sidebar visibility */
+.moderator-only { display:none; }
+body.is-moderator .moderator-only { display:flex !important; }
+body.is-moderator .nav-section-label.moderator-only { display:block !important; }
+
+/* Purple for moderator badge */
+:root { --purple:#6f42c1; --purple-light:#f3e6fb; }
+body.dark { --purple-light:#2a1f3a; }
+
+/* Edit small button on paper cards & team cards */
+.btn-edit-small { font-size:11px; padding:3px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:none; color:var(--text2); cursor:pointer; font-family:inherit; transition:all .15s; }
+.btn-edit-small:hover { border-color:var(--primary); color:var(--primary); }
+
+/* Read receipts button on notices */
+.btn-receipts { font-size:11px; padding:3px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); background:none; color:var(--text2); cursor:pointer; font-family:inherit; }
+.btn-receipts:hover { background:var(--surface2); }
+
+/* Paper unpublished state */
+.paper-unpublished { opacity:.7; border-color:var(--warning) !important; }
+.paper-unpub-banner { font-size:12px; color:var(--warning); font-weight:600; margin-bottom:.5rem; }
+
+/* Team member chips with kick button */
+.team-members-list { font-size:13px; color:var(--text2); margin:.3rem 0; display:flex; flex-wrap:wrap; gap:5px; align-items:center; }
+.team-member-chip { display:inline-flex; align-items:center; gap:4px; background:var(--surface2); border-radius:12px; padding:2px 8px; font-size:12px; color:var(--text); }
+.kick-btn { background:none; border:none; color:var(--text3); cursor:pointer; font-size:11px; padding:0 2px; line-height:1; border-radius:50%; }
+.kick-btn:hover { color:var(--danger); background:var(--danger-light); }
+
+/* Pending approvals panel */
+.approval-item { display:flex; align-items:flex-start; gap:1rem; padding:.875rem 0; border-bottom:1px solid var(--border); flex-wrap:wrap; }
+.approval-item:last-child { border-bottom:none; }
+.approval-icon { font-size:20px; flex-shrink:0; margin-top:2px; }
+.approval-body { flex:1; min-width:160px; }
+.approval-title { font-size:13px; font-weight:700; color:var(--text); margin-bottom:3px; }
+.approval-desc { font-size:13px; color:var(--text2); }
+.approval-actions { display:flex; gap:6px; flex-shrink:0; }
+.btn-approve { font-size:12px; padding:5px 12px; border:1.5px solid var(--success); border-radius:var(--radius-sm); background:var(--success-light); color:var(--success); cursor:pointer; font-family:inherit; font-weight:600; }
+.btn-approve:hover { background:var(--success); color:#fff; }
+.btn-deny { font-size:12px; padding:5px 12px; border:1.5px solid var(--danger); border-radius:var(--radius-sm); background:var(--danger-light); color:var(--danger); cursor:pointer; font-family:inherit; font-weight:600; }
+.btn-deny:hover { background:var(--danger); color:#fff; }
+
+/* =============================================
    NOTIFICATION SYSTEM
    ============================================= */
 
