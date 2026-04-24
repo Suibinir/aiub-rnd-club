@@ -347,8 +347,8 @@
   <main class="page" id="page-notices">
     <div class="page-header"><h2 class="page-title">Notice Board</h2><p class="page-sub">Club announcements and updates</p></div>
     <div class="card">
-      <div class="card-header-row"><h3 class="card-title" style="margin-bottom:0;">All Notices</h3><button class="btn-outline" onclick="toggleNoticeForm()">+ Post Notice</button></div>
-      <div class="notice-form" id="noticeForm">
+      <div class="card-header-row"><h3 class="card-title" style="margin-bottom:0;">All Notices</h3><button class="btn-outline admin-only moderator-only" onclick="toggleNoticeForm()">+ Post Notice</button></div>
+      <div class="notice-form admin-only moderator-only" id="noticeForm">
         <div class="form-group"><label>Title</label><input type="text" id="noticeTitle" placeholder="Notice title..."/></div>
         <div class="form-group"><label>Category</label><select id="noticeCategory"><option value="general">🔵 General</option><option value="urgent">🔴 Urgent</option><option value="event">🟢 Event</option></select></div>
         <div class="form-group"><label>Content</label><textarea id="noticeContent" rows="3" placeholder="Notice details..."></textarea></div>
@@ -548,10 +548,10 @@ function _call(name, ...args) {
 }
 const _fns = ["toggleSidebar","navigateTo","toggleTheme","doRegisterEvent","doDeleteEvent",
   "openAddEventModal","closeAddEventModal","submitAddEvent","openEventAdmin","closeEventAdmin",
-  "switchEvTab","doToggleEventAtt","toggleNoticeForm","postNotice","doDeleteNotice","openNoticeReads",
+  "switchEvTab","doToggleEventAtt","toggleNoticeForm","postNotice","doDeleteNotice","openNoticeReads","closeNoticeReadsModal",
   "openChangePwModal","closeChangePwModal","submitChangePassword","triggerProfilePicUpload",
   "handleProfilePicChange","togglePaperForm","submitPaper","doDeletePaper","handlePdfSelect",
-  "downloadPdf","openEditPaper","submitEditPaper","closeEditPaperModal","requestPaperUnpublish",
+  "downloadPdf","openEditPaper","submitEditPaper","closeEditPaperModal","requestPaperUnpublish","doRepublishPaper",
   "toggleTeamForm","submitTeam","doJoinTeam","doDeleteTeam","openEditTeam","submitEditTeam","closeEditTeamModal","requestKickMember",
   "openChat","closeChatModal","sendMessage","chatKeydown","doDeleteChatMsg",
   "toggleMentorForm","submitMentor","doDeleteMentor",
