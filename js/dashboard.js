@@ -378,21 +378,23 @@ function updateNoticeBadge(){
 }
 function renderNotices(){
   const list=document.getElementById("noticeList"); if(!list) return;
-  // Track reads for each notice we display
-  notices.forEach(n=>{ if(n.firestoreId && n.firestoreId.indexOf("seed")<0) markNoticeRead(n.firestoreId, uid, currentUser.name).catch(()=>{}); });
-  list.innerHTML=notices.map(n=>`
-    <div class="notice-item">
+  notices.forEach(n=>{ if(n.firestoreId && !n.firestoreId.startsWith("seed")) markNoticeRead(n.firestoreId, uid, currentUser.name).catch(()=>{}); });
+  list.innerHTML=notices.map(n=>{
+    const canDelete = isAdmin || isModerator || n.authorId===uid;
+    const canSeeReads = isAdmin || isModerator;
+    return `<div class="notice-item">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">
         <span class="notice-tag tag-${n.tag}">${{urgent:"🔴 Urgent",general:"🔵 General",event:"🟢 Event"}[n.tag]||n.tag}</span>
         <div style="display:flex;gap:6px;align-items:center;">
-          ${(isAdmin||isModerator)?`<button class="btn-receipts" onclick="openNoticeReads('${n.firestoreId}')" title="See who read this">👁️ Reads</button>`:""}
-          ${(isAdmin||isModerator)?`<button class="btn-delete" onclick="doDeleteNotice('${n.firestoreId}')">🗑</button>`:""}
+          ${canSeeReads?`<button class="btn-receipts" onclick="openNoticeReads('${n.firestoreId}')">👁️ Reads</button>`:""}
+          ${canDelete?`<button class="btn-delete" onclick="doDeleteNotice('${n.firestoreId}')">🗑</button>`:""}
         </div>
       </div>
       <div class="notice-title">${escHtml(n.title)}</div>
       <div class="notice-body">${escHtml(n.body)}</div>
       <div class="notice-date">${n.date} · Posted by ${escHtml(n.author)}</div>
-    </div>`).join("") || `<p style="color:var(--text3);padding:1rem 0">No notices yet.</p>`;
+    </div>`;
+  }).join("") || `<p style="color:var(--text3);padding:1rem 0">No notices yet.</p>`;
 }
 
 async function openNoticeReads(noticeId){
@@ -419,23 +421,29 @@ async function openNoticeReads(noticeId){
 function closeNoticeReadsModal(){ document.getElementById("noticeReadsModal").style.display="none"; }
 function toggleNoticeForm(){ const f=document.getElementById("noticeForm"); f.classList.toggle("open"); if(f.classList.contains("open")) f.scrollIntoView({behavior:"smooth"}); }
 async function postNotice(){
+  if(!isAdmin && !isModerator){ showToast("⚠️ Only admin or moderator can post notices.","warn"); return; }
   const title=document.getElementById("noticeTitle").value.trim();
   const tag=document.getElementById("noticeCategory").value;
   const body=document.getElementById("noticeContent").value.trim();
   if(!title||!body){ showToast("⚠️ Fill in title and content","warn"); return; }
+  const btn=document.querySelector("#noticeForm .btn-primary");
+  if(btn){ btn.disabled=true; btn.textContent="Posting..."; }
   try {
-    await addNotice({ tag, title, body, date:"Just now", author:currentUser.name });
+    await addNotice({ tag, title, body, date:"Just now", author:currentUser.name, authorId:uid, authorRole:currentUser.role });
     stats.noticesPosted=(stats.noticesPosted||0)+1;
     await addPointsToMember(uid,5);
     await saveStats(uid, stats);
     checkBadge("reporter", stats.noticesPosted>=3);
-    // Notify all members
     notifyAllNotice(title);
     document.getElementById("noticeTitle").value="";
     document.getElementById("noticeContent").value="";
     toggleNoticeForm();
     showToast("📢 Notice posted! +5 pts");
-  } catch(e){ showToast("❌ Error posting notice","warn"); }
+  } catch(e){
+    console.error("postNotice error:", e);
+    showToast("❌ Error: "+e.message,"warn");
+  }
+  if(btn){ btn.disabled=false; btn.textContent="Post Notice"; }
 }
 async function doDeleteNotice(fid){
   if(!confirm("Delete this notice?")) return;
@@ -1202,9 +1210,37 @@ async function logout(){
 // NOTIFICATION SYSTEM
 // =============================================
 
+// Play a soft notification beep using Web Audio API (no file needed)
+function playNotifSound(){
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    // Two-tone pleasant "ding"
+    const tones = [880, 1100];
+    tones.forEach((freq, i) => {
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0, ctx.currentTime + i * 0.12);
+      gain.gain.linearRampToValueAtTime(0.18, ctx.currentTime + i * 0.12 + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.12 + 0.3);
+      osc.start(ctx.currentTime + i * 0.12);
+      osc.stop(ctx.currentTime + i * 0.12 + 0.35);
+    });
+  } catch(e){ /* AudioContext not available — silently skip */ }
+}
+
+let _prevUnreadCount = 0;
+
 // --- Bell UI ---
 function renderNotificationBell(notifs){
   const unread = notifs.filter(n=>!n.read).length;
+
+  // Play sound only when unread count increases (new notification arrived)
+  if(unread > _prevUnreadCount) playNotifSound();
+  _prevUnreadCount = unread;
 
   // Update badge count
   const badge = document.getElementById("notifBadge");
@@ -1213,7 +1249,7 @@ function renderNotificationBell(notifs){
     badge.style.display = unread > 0 ? "flex" : "none";
   }
 
-  // If dropdown is open, re-render its content
+  // If dropdown is open, re-render its content live
   const dropdown = document.getElementById("notifDropdown");
   if(dropdown && dropdown.classList.contains("open")){
     renderNotificationList(notifs);
