@@ -256,19 +256,21 @@
       <div class="user-name" id="sidebarName">Loading...</div>
       <div class="user-role" id="sidebarRole">Member</div>
     </div>
-    <button class="logout-btn" onclick="handleLogout()" title="Logout">↩</button>
+    <button class="logout-btn" onclick="logout()" title="Logout">↩</button>
 
 <script>
-  // Put this function inside the script tag at the bottom of dashboard.html
-  async function handleLogout() {
+  async function logout() {
     if (confirm("Log out of all tabs?")) {
       try {
-        // 1. This kills the session on the Firebase Server
-        await window.APP.clearSession();
-      } catch (e) {
-        console.log("Session already gone");
+        // 1. Tell the server to delete the token immediately
+        if (window.APP && window.APP.clearSession) {
+          await window.APP.clearSession();
+        }
+      } catch (err) {
+        console.error("Session already cleared on server");
       }
-      // 2. Redirect this tab
+      // 2. Clear this tab and go home
+      sessionStorage.clear();
       window.location.href = "index.html";
     }
   }
