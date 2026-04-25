@@ -323,7 +323,7 @@ async function doRegisterEvent(fid, btn){
 }
 async function doDeleteEvent(fid){
   if(!confirm("Delete this event permanently?")) return;
-  try { await deleteEvent(fid); showToast("🗑 Event deleted."); }
+  try { await deleteEvent(fid, uid); showToast("🗑 Event deleted."); }
   catch(e){ showToast("❌ Error deleting event","warn"); }
 }
 
@@ -336,7 +336,7 @@ async function submitAddEvent(){
   if(!title||!venue||!description){ document.getElementById("addEventError").textContent="⚠️ Title, Venue and Description are required."; return; }
   const btn=document.querySelector("#addEventForm .btn-primary"); btn.disabled=true; btn.textContent="Creating...";
   try {
-    await createEvent({ day:v("evDay")||"01", month:v("evMonth")||"Jan", year:v("evYear")||new Date().getFullYear(), title, description, venue, time:v("evTime")||"TBD", duration:v("evDuration")||"TBD", capacity:parseInt(v("evCapacity"))||50, category:v("evCategory"), points:parseInt(v("evPoints"))||20, organizer:v("evOrganizer")||currentUser.name, past:false, registrants:[], attendees:[] });
+    await createEvent({ day:v("evDay")||"01", month:v("evMonth")||"Jan", year:v("evYear")||new Date().getFullYear(), title, description, venue, time:v("evTime")||"TBD", duration:v("evDuration")||"TBD", capacity:parseInt(v("evCapacity"))||50, category:v("evCategory"), points:parseInt(v("evPoints"))||20, organizer:v("evOrganizer")||currentUser.name, past:false, registrants:[], attendees:[] }, uid);
     closeAddEventModal();
     notifyAllEvent(title);
     showToast("✅ Event '"+title+"' created!");
@@ -378,7 +378,7 @@ async function renderEventAdminTabs(ev,tab){
 }
 async function doToggleEventAtt(fid, memberId, attended, pts){
   try {
-    await markEventAttendee(fid, memberId, attended);
+    await markEventAttendee(fid, memberId, attended, uid);
     if(attended){
       await addPointsToMember(memberId, pts);
       const mStats = await getStats(memberId);
@@ -458,7 +458,7 @@ async function postNotice(){
   const btn=document.querySelector("#noticeForm .btn-primary");
   if(btn){ btn.disabled=true; btn.textContent="Posting..."; }
   try {
-    await addNotice({ tag, title, body, date:"Just now", author:currentUser.name, authorId:uid, authorRole:currentUser.role });
+    await addNotice({ tag, title, body, date:"Just now", author:currentUser.name, authorId:uid, authorRole:currentUser.role }, uid);
     stats.noticesPosted=(stats.noticesPosted||0)+1;
     await addPointsToMember(uid,5);
     await saveStats(uid, stats);
@@ -476,7 +476,7 @@ async function postNotice(){
 }
 async function doDeleteNotice(fid){
   if(!confirm("Delete this notice?")) return;
-  try { await fbDeleteNotice(fid); showToast("🗑 Notice deleted"); }
+  try { await fbDeleteNotice(fid, uid); showToast("🗑 Notice deleted"); }
   catch(e){ showToast("❌ Error deleting notice","warn"); }
 }
 
@@ -928,10 +928,10 @@ async function submitMentor(){
   const v=id=>document.getElementById(id).value.trim();
   const name=v("mentorName"),expertise=v("mentorExpertise");
   if(!name||!expertise){ showToast("⚠️ Name and expertise required","warn"); return; }
-  try { await addMentor({ name, title:v("mentorTitle")||"Mentor", dept:v("mentorDept")||"—", expertise, email:v("mentorEmail")||"—", available:true }); document.getElementById("mentorForm").classList.remove("open"); document.getElementById("mentorForm").querySelectorAll("input").forEach(i=>i.value=""); await renderMentors(); showToast("👨‍🏫 Mentor added!"); }
+  try { await addMentor({ name, title:v("mentorTitle")||"Mentor", dept:v("mentorDept")||"—", expertise, email:v("mentorEmail")||"—", available:true }, uid); document.getElementById("mentorForm").classList.remove("open"); document.getElementById("mentorForm").querySelectorAll("input").forEach(i=>i.value=""); await renderMentors(); showToast("👨‍🏫 Mentor added!"); }
   catch(e){ showToast("❌ Error: "+e.message,"warn"); }
 }
-async function doDeleteMentor(fid){ if(!confirm("Remove this mentor?")) return; try { await fbDeleteMentor(fid); await renderMentors(); } catch(e){ showToast("❌ Error","warn"); } }
+async function doDeleteMentor(fid){ if(!confirm("Remove this mentor?")) return; try { await fbDeleteMentor(fid, uid); await renderMentors(); } catch(e){ showToast("❌ Error","warn"); } }
 
 // -- Seminars --
 // -- Executive Panel --
@@ -960,7 +960,7 @@ async function submitExecutive(){
   const name=v("execName"),title=v("execTitle");
   if(!name||!title){ showToast("⚠️ Name and position required","warn"); return; }
   try {
-    await addExecutive({ name, title, dept:v("execDept")||"—", email:v("execEmail")||"—", responsibilities:v("execResp")||"—" });
+    await addExecutive({ name, title, dept:v("execDept")||"—", email:v("execEmail")||"—", responsibilities:v("execResp")||"—" }, uid);
     document.getElementById("execForm").classList.remove("open");
     document.getElementById("execForm").querySelectorAll("input").forEach(i=>i.value="");
     await renderExecutives(); showToast("👔 Executive added!");
@@ -968,7 +968,7 @@ async function submitExecutive(){
 }
 async function doDeleteExecutive(fid){
   if(!confirm("Remove this executive?")) return;
-  try { await fbDeleteExecutive(fid); await renderExecutives(); }
+  try { await fbDeleteExecutive(fid, uid); await renderExecutives(); }
   catch(e){ showToast("❌ Error","warn"); }
 }
 
@@ -1066,7 +1066,7 @@ async function submitAddMember(){
   const initials=(name.split(" ").map(w=>w[0]).join("").toUpperCase()+"??").slice(0,2);
   const btn=document.querySelector("#addMemberForm .btn-primary"); btn.disabled=true; btn.textContent="Adding...";
   try {
-    const ok=await addMember({ id:mid, password:pwd, name, initials, role, dept, email, phone, status });
+    const ok=await addMember({ id:mid, password:pwd, name, initials, role, dept, email, phone, status }, uid);
     if(!ok){ errEl.textContent="⚠️ A member with that ID already exists."; btn.disabled=false; btn.textContent="Add Member"; return; }
     closeAddMemberModal(); await renderAdmin();
     notifyNewMember(name);
@@ -1077,7 +1077,7 @@ async function submitAddMember(){
 async function doRemoveMember(memberId, memberName){
   if(!confirm(`Remove "${memberName}" (${memberId})?\n\nThis permanently deletes their account.`)) return;
   if(memberId===uid){ showToast("⚠️ Cannot remove yourself!","warn"); return; }
-  try { await removeMember(memberId); await renderAdmin(); showToast("🗑 '"+memberName+"' removed."); }
+  try { await removeMember(memberId, uid); await renderAdmin(); showToast("🗑 '"+memberName+"' removed."); }
   catch(e){ showToast("❌ Error removing member","warn"); }
 }
 
@@ -1124,7 +1124,7 @@ async function submitCSVImport(){
   let added=0, skipped=0;
   for(let i=0;i<data.length;i++){
     const cb=document.getElementById("csvrow_"+i); if(cb&&!cb.checked){ skipped++; continue; }
-    const ok=await addMember(data[i]);
+    const ok=await addMember(data[i], uid);
     ok?added++:skipped++;
   }
   closeCSVPreview(); await renderAdmin();
@@ -1169,7 +1169,7 @@ async function submitBulkAttendance(){
   try {
     const records=[];
     selects.forEach((sel,i)=>{ records.push({ memberId:sel.dataset.id, date:todayStr, session, status:sel.value, note:noteInputs[i]?.value.trim()||"—" }); });
-    await saveBulkAttendance(records);
+    await saveBulkAttendance(records, uid);
     // Notify each member of their individual attendance status
     records.forEach(r => {
       if(r.memberId !== uid) notifyAttendance(r.memberId, session, r.status);
