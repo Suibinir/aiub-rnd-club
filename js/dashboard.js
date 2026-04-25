@@ -51,14 +51,13 @@ function escHtml(s){ return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&l
 document.addEventListener("DOMContentLoaded", async ()=>{
   showGlobalLoader(true);
   try {
-    // 1. Verify session is still valid on Firestore
+    // 1. Verify this tab's token still matches Firestore (catches stale sessions)
     let sessionValid = false;
     try {
       sessionValid = await verifySession();
     } catch(e){
-      // If sessions rule not in Firestore yet, trust local session for now
-      console.warn("Session verify failed (add /sessions rule to Firestore):", e);
-      sessionValid = !!loadSession();
+      console.warn("Session verify failed:", e);
+      sessionValid = !!loadSession(); // fall back to local if Firestore rule missing
     }
     if(!sessionValid){
       sessionStorage.removeItem("uniclub_token");
@@ -67,13 +66,18 @@ document.addEventListener("DOMContentLoaded", async ()=>{
       return;
     }
 
-    // 2. Start real-time listener — if token is deleted (logout elsewhere), redirect immediately
+    // 2. Start real-time listener — fires instantly if another login happens
+    //    or if this session is logged out from anywhere
     const token = getSessionToken();
-    listenToSession(token, ()=>{
+    listenToSession(uid, token, ()=>{
       sessionStorage.removeItem("uniclub_token");
       sessionStorage.removeItem("uniclub_user");
-      alert("⚠️ You have been logged out from another tab or device.");
-      window.location.href = "index.html";
+      // Show a non-blocking banner instead of alert (alert blocks the redirect)
+      const banner = document.createElement("div");
+      banner.textContent = "🔒 You were signed in from another location. Redirecting to login...";
+      banner.style.cssText = "position:fixed;top:0;left:0;right:0;background:#E24B4A;color:#fff;text-align:center;padding:14px;font-size:14px;font-weight:600;z-index:99999;";
+      document.body.appendChild(banner);
+      setTimeout(()=>{ window.location.href = "index.html"; }, 2000);
     });
 
     setupUser();
@@ -523,7 +527,7 @@ function renderProfileBadges(){
 function triggerProfilePicUpload(){ document.getElementById("profilePicInput").click(); }
 function handleProfilePicChange(input){
   const file=input.files[0]; if(!file) return;
-  if(file.size>5*1024*1024){ showToast("⚠️ Image too large. Max 2MB.","warn"); return; }
+  if(file.size>2*1024*1024){ showToast("⚠️ Image too large. Max 2MB.","warn"); return; }
   const reader=new FileReader();
   reader.onload=async e=>{
     try {
@@ -1220,25 +1224,16 @@ function downloadFile(content,mime,filename){
   document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
 }
 
-// Inside your dashboard.js (find the logout function)
-async function logout() {
-  const token = sessionStorage.getItem("uniclub_token");
-  
-  if (token) {
-    // 1. Invalidate on the server (Firestore)
-    // This will trigger the onSnapshot listener in ALL other tabs
-    await window._deleteSession(token); 
+async function logout(){
+  if(confirm("Log out?")){
+    if(unsubLeaderboard)    unsubLeaderboard();
+    if(unsubNotices)        unsubNotices();
+    if(unsubEvents)         unsubEvents();
+    if(unsubNotifications)  unsubNotifications();
+    await clearSession(); // deletes token from Firestore → invalidates ALL tabs
+    window.location.href = "index.html";
   }
-
-  // 2. Clear local data
-  sessionStorage.clear();
-  
-  // 3. Redirect
-  window.location.href = "index.html";
 }
-
-// Ensure _deleteSession is mapped in your _fns array at the bottom of dashboard.js
-// so the UI can call it if needed, or just call it directly if imported.
 
 // =============================================
 // NOTIFICATION SYSTEM
@@ -1546,82 +1541,5 @@ window.APP = {
   exportMembersCSV, triggerCSVImport, handleCSVImport, openCSVPreview, closeCSVPreview, submitCSVImport,
   openBulkAttendance, closeBulkAttendance, submitBulkAttendance, filterBulkAttendance,
   toggleNotificationDropdown, doMarkAllRead, doClearAllNotifications, doDeleteNotification, handleNotifClick,
-  logout, clearSession
+  logout
 };
-
-// --- GLOBAL LOGOUT FORCE ---
-(function() {
-  const token = sessionStorage.getItem("uniclub_token");
-  if (!token) return;
-
-  // Use a timer to wait for Firebase to be ready
-  setTimeout(() => {
-    if (window._db && window._onSnapshot) {
-      const sessionRef = window._doc(window._db, "sessions", token);
-      
-      // 1. Real-time Listener (Fastest)
-      window._onSnapshot(sessionRef, (snap) => {
-        if (!snap.exists()) {
-          forceLogout();
-        }
-      });
-
-      // 2. Manual Backup (Every 2 seconds)
-      setInterval(async () => {
-        try {
-          const check = await window._getDoc(sessionRef);
-          if (!check.exists()) forceLogout();
-        } catch (e) { /* ignore network blips */ }
-      }, 2000);
-    }
-  }, 2000);
-
-  function forceLogout() {
-    sessionStorage.clear();
-    window.location.href = "index.html";
-  }
-})();
-
-// This runs in the background of every tab
-(function() {
-  const token = sessionStorage.getItem("uniclub_token");
-  if (token) {
-    // We wait 2 seconds to make sure Firebase is ready
-    setTimeout(() => {
-      if (window._db && window._onSnapshot) {
-        const sessionRef = window._doc(window._db, "sessions", token);
-        window._onSnapshot(sessionRef, (snap) => {
-          if (!snap.exists()) {
-            // IF THE DATABASE RECORD IS DELETED, LOG OUT AUTOMATICALLY
-            sessionStorage.clear();
-            window.location.href = "index.html";
-          }
-        });
-      }
-    }, 2000);
-  }
-})();
-
-// This runs in every open tab
-setInterval(async () => {
-  const token = sessionStorage.getItem("uniclub_token");
-  if (!token) return;
-
-  try {
-    if (window._db && window._getDoc) {
-      const sessionRef = window._doc(window._db, "sessions", token);
-      const snap = await window._getDoc(sessionRef);
-      
-      // If the session was deleted by another tab, kick this one out
-      if (!snap.exists()) {
-        sessionStorage.clear();
-        window.location.href = "index.html";
-      }
-    }
-  } catch (e) {
-    // Ignore errors if the network is temporarily blocked by the security wall
-  }
-}, 2000);
-
-
-
