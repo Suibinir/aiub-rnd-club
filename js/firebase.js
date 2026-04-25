@@ -124,18 +124,27 @@ export async function getAllMembers(){
   return snap.docs.map(d=>({ id:d.id, ...d.data() }));
 }
 
-export async function addMember(m){
+// ── ROLE VERIFICATION ─────────────────────────────────────────────
+// Always verify role from Firestore, never trust what's in sessionStorage.
+// This is the JS-layer guard — Firestore rules are the database-layer guard.
+async function verifyRole(callerId, requiredRoles){
+  const snap = await getDoc(doc(db,"members",callerId));
+  if(!snap.exists()) throw new Error("permission-denied");
+  const role = snap.data().role;
+  if(!requiredRoles.includes(role)) throw new Error("permission-denied");
+  return role;
+}
+
+export async function addMember(m, callerId){
+  await verifyRole(callerId, ["admin"]);
   const existing = await getDoc(doc(db,"members",m.id));
   if(existing.exists()) return false;
   await setDoc(doc(db,"members",m.id), m);
-  // Create leaderboard entry
   await setDoc(doc(db,"leaderboard",m.id), {
     name:m.name, initials:m.initials, points:0, badges:0,
     bgColor:"#e9ecef", txtColor:"#495057"
   });
-  // Seed default stats
   await setDoc(doc(db,"stats",m.id), getDefaultStats(m.id));
-  // Seed default badges
   const batch = writeBatch(db);
   getDefaultBadges().forEach(b=>{
     batch.set(doc(db,"badges",m.id+"_"+b.id), { memberId:m.id, ...b });
@@ -144,13 +153,11 @@ export async function addMember(m){
   return true;
 }
 
-export async function removeMember(id){
-  // Delete member doc
+export async function removeMember(id, callerId){
+  await verifyRole(callerId, ["admin"]);
   await deleteDoc(doc(db,"members",id));
   await deleteDoc(doc(db,"leaderboard",id));
   await deleteDoc(doc(db,"stats",id));
-  // Note: sub-collections (attendance, badges) are not auto-deleted
-  // They will be orphaned but won't affect the app
 }
 
 export async function updateMemberStatus(id, status){
@@ -242,20 +249,23 @@ export async function getEvents(){
   }
   return snap.docs.map(d=>({ firestoreId:d.id, ...d.data() }));
 }
-export async function createEvent(ev){
+export async function createEvent(ev, callerId){
+  await verifyRole(callerId, ["admin"]);
   const ref = await addDoc(collection(db,"events"), { ...ev, sortOrder: Date.now() });
   return ref.id;
 }
 export async function updateEvent(firestoreId, data){
   await updateDoc(doc(db,"events",firestoreId), data);
 }
-export async function deleteEvent(firestoreId){
+export async function deleteEvent(firestoreId, callerId){
+  await verifyRole(callerId, ["admin"]);
   await deleteDoc(doc(db,"events",firestoreId));
 }
 export async function registerForEvent(firestoreId, uid){
   await updateDoc(doc(db,"events",firestoreId), { registrants: arrayUnion(uid) });
 }
-export async function markEventAttendee(firestoreId, memberId, attended){
+export async function markEventAttendee(firestoreId, memberId, attended, callerId){
+  await verifyRole(callerId, ["admin"]);
   if(attended){
     await updateDoc(doc(db,"events",firestoreId), { attendees: arrayUnion(memberId) });
   } else {
@@ -277,11 +287,13 @@ export async function getNotices(){
   }
   return snap.docs.map(d=>({ firestoreId:d.id, ...d.data() }));
 }
-export async function addNotice(notice){
+export async function addNotice(notice, callerId){
+  await verifyRole(callerId, ["admin","moderator"]);
   const ref = await addDoc(collection(db,"notices"), { ...notice, timestamp: Date.now() });
   return ref.id;
 }
-export async function deleteNotice(firestoreId){
+export async function deleteNotice(firestoreId, callerId){
+  await verifyRole(callerId, ["admin","moderator"]);
   await deleteDoc(doc(db,"notices",firestoreId));
 }
 
@@ -398,11 +410,13 @@ export async function getMentors(){
   }
   return snap.docs.map(d=>({ firestoreId:d.id, ...d.data() }));
 }
-export async function addMentor(mentor){
+export async function addMentor(mentor, callerId){
+  await verifyRole(callerId, ["admin"]);
   const ref = await addDoc(collection(db,"mentors"), mentor);
   return ref.id;
 }
-export async function deleteMentor(firestoreId){
+export async function deleteMentor(firestoreId, callerId){
+  await verifyRole(callerId, ["admin"]);
   await deleteDoc(doc(db,"mentors",firestoreId));
 }
 
@@ -412,11 +426,13 @@ export async function getExecutives(){
   if(snap.empty) return [];
   return snap.docs.map(d=>({ firestoreId:d.id, ...d.data() }));
 }
-export async function addExecutive(exec){
+export async function addExecutive(exec, callerId){
+  await verifyRole(callerId, ["admin"]);
   const ref = await addDoc(collection(db,"executives"), exec);
   return ref.id;
 }
-export async function deleteExecutive(firestoreId){
+export async function deleteExecutive(firestoreId, callerId){
+  await verifyRole(callerId, ["admin"]);
   await deleteDoc(doc(db,"executives",firestoreId));
 }
 
@@ -477,8 +493,8 @@ export async function deleteSeminar(firestoreId){
 }
 
 // ---- BULK ATTENDANCE ----
-export async function saveBulkAttendance(records){
-  // records = [{ memberId, date, session, status, note }]
+export async function saveBulkAttendance(records, callerId){
+  await verifyRole(callerId, ["admin","moderator"]);
   const batch = writeBatch(db);
   for(const r of records){
     const attRef = doc(collection(db,"members",r.memberId,"attendance"));
