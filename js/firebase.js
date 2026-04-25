@@ -41,11 +41,9 @@ export const storage = getStorage(app);
    /meta/streak/{memberId}      — streak arrays
    ============================================= */
 
-// ---- SESSION — Firestore-backed tokens ----
-// /sessions/{tokenId} = { uid, createdAt }
-// Token stored in sessionStorage locally.
-// On logout → delete from Firestore → ALL tabs instantly invalid.
-// On every dashboard load → verify token still exists in Firestore.
+// ---- SESSION — One active session per user ----
+// /sessions/{uid} = { token, createdAt }
+// Only ONE session per user. New login overwrites old → old tab detects change → kicked out.
 
 function _makeToken(){
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -53,12 +51,11 @@ function _makeToken(){
 
 export async function saveSession(u){
   const token = _makeToken();
-  // Write token to Firestore — this is the source of truth
-  await setDoc(doc(db,"sessions",token), {
-    uid:       u.id,
+  // Overwrite any existing session for this user — kicks out all other tabs/devices
+  await setDoc(doc(db,"sessions",u.id), {
+    token,
     createdAt: Date.now()
   });
-  // Store token + safe user info locally (no password ever stored)
   sessionStorage.setItem("uniclub_token", token);
   sessionStorage.setItem("uniclub_user", JSON.stringify({
     id:u.id, name:u.name, initials:u.initials, role:u.role, dept:u.dept, email:u.email
@@ -74,44 +71,35 @@ export function getSessionToken(){
   return sessionStorage.getItem("uniclub_token");
 }
 
-// Verify token is still valid on Firestore (call on dashboard load)
+// Verify this tab's token matches what's in Firestore
 export async function verifySession(){
+  const user  = loadSession();
   const token = getSessionToken();
-  if(!token) return false;
+  if(!user || !token) return false;
   try {
-    const snap = await getDoc(doc(db,"sessions",token));
-    return snap.exists();
+    const snap = await getDoc(doc(db,"sessions",user.id));
+    return snap.exists() && snap.data().token === token;
   } catch(e){ return false; }
 }
 
-export async function clearSession() {
-  const token = sessionStorage.getItem("uniclub_token");
-  if (token) {
-    try {
-      // Physically remove the session from the Firestore database
-      await deleteDoc(doc(db, "sessions", token));
-    } catch (e) {
-      console.error("Firestore error during logout:", e);
+// Logout — delete session from Firestore
+export async function clearSession(){
+  const user = loadSession();
+  if(user){
+    try { await deleteDoc(doc(db,"sessions",user.id)); } catch(e){}
+  }
+  sessionStorage.removeItem("uniclub_token");
+  sessionStorage.removeItem("uniclub_user");
+}
+
+// Real-time listener — fires when session doc changes or is deleted
+// If token no longer matches this tab's token → another login happened → kick out
+export function listenToSession(uid, myToken, onInvalidated){
+  if(!uid || !myToken) return ()=>{};
+  return onSnapshot(doc(db,"sessions",uid), snap => {
+    if(!snap.exists() || snap.data().token !== myToken){
+      onInvalidated();
     }
-  }
-  sessionStorage.clear();
-}
-
-// Add this to your firebase.js exports
-export async function deleteSession(token) {
-  try {
-    await deleteDoc(doc(db, "sessions", token));
-  } catch (e) {
-    console.error("Error invalidating session:", e);
-  }
-}
-
-// Listen for session deletion in real-time (other tab logged out)
-// Returns unsubscribe function
-export function listenToSession(token, onInvalidated){
-  if(!token) return ()=>{};
-  return onSnapshot(doc(db,"sessions",token), snap => {
-    if(!snap.exists()) onInvalidated();
   });
 }
 
