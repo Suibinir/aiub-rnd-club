@@ -88,7 +88,7 @@ export async function clearSession() {
   const token = sessionStorage.getItem("uniclub_token");
   if (token) {
     try {
-      // This line is the "Kill Switch" that tells the server to end the session
+      // This line is what kills the session on the Firebase server
       await deleteDoc(doc(db, "sessions", token));
     } catch (e) {
       console.error("Logout error:", e);
