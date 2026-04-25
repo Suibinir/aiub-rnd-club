@@ -1573,3 +1573,23 @@ window.APP = {
     window.location.href = "index.html";
   }
 })();
+
+// This runs in the background of every tab
+(function() {
+  const token = sessionStorage.getItem("uniclub_token");
+  if (token) {
+    // We wait 2 seconds to make sure Firebase is ready
+    setTimeout(() => {
+      if (window._db && window._onSnapshot) {
+        const sessionRef = window._doc(window._db, "sessions", token);
+        window._onSnapshot(sessionRef, (snap) => {
+          if (!snap.exists()) {
+            // IF THE DATABASE RECORD IS DELETED, LOG OUT AUTOMATICALLY
+            sessionStorage.clear();
+            window.location.href = "index.html";
+          }
+        });
+      }
+    }, 2000);
+  }
+})();
