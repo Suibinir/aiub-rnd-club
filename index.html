@@ -78,29 +78,36 @@
           btn.disabled=false; btn.textContent="Sign In →"; return;
         }
 
-        const data = snap.data();
-        if(data.password !== pw){
-          showErr("❌ Wrong password. Please try again.");
-          document.getElementById("password").value="";
-          btn.disabled=false; btn.textContent="Sign In →"; return;
-        }
+        // ... (existing code above: checking if student exists and password is correct)
 
-        // Create server-side session token
-        const token = Math.random().toString(36).slice(2) + Date.now().toString(36);
-        try {
-          await setDoc(doc(db,"sessions",token), { uid:id, createdAt:Date.now() });
-        } catch(sessionErr){
-          // If sessions collection isn't in Firestore rules yet, fall back gracefully
-          console.warn("Session token write failed (add /sessions rule to Firestore):", sessionErr);
-        }
+const data = snap.data();
+if (data.password !== pw) { 
+  showErr("❌ Wrong password."); 
+  btn.disabled=false; 
+  return; 
+}
 
-        // Save locally and go
-        sessionStorage.setItem("uniclub_token", token);
-        sessionStorage.setItem("uniclub_user", JSON.stringify({
-          id, name:data.name, initials:data.initials,
-          role:data.role, dept:data.dept, email:data.email
-        }));
-        window.location.href = "dashboard.html";
+// --- PASTE THE NEW CODE HERE ---
+
+// 1. Create a unique session ID (the keycard)
+const token = Math.random().toString(36).slice(2) + Date.now().toString(36);
+
+// 2. Save this specific keycard to the member's profile in the database
+// This tells the database: "This is the ONLY valid session right now."
+await updateDoc(doc(db, "members", id), {
+  active_session: token
+});
+
+// 3. Keep your existing code that creates the session record
+await setDoc(doc(db, "sessions", token), { uid: id, createdAt: Date.now() });
+
+// 4. Save the User ID locally so the next step knows who to watch
+sessionStorage.setItem("uniclub_user_id", id);
+sessionStorage.setItem("uniclub_token", token);
+
+// --- END OF NEW CODE ---
+
+window.location.href = "dashboard.html";
 
       } catch(e){
         console.error("Login error:", e);
