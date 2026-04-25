@@ -84,17 +84,14 @@ export async function verifySession(){
   } catch(e){ return false; }
 }
 
-// Logout — delete token from Firestore so ALL tabs are invalidated
-// REPLACE your old clearSession with this one
 export async function clearSession() {
   const token = sessionStorage.getItem("uniclub_token");
   if (token) {
     try {
-      // This part tells Firebase to delete the session document
-      const { doc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+      // This line is the "Kill Switch" that tells the server to end the session
       await deleteDoc(doc(db, "sessions", token));
     } catch (e) {
-      console.error("Error deleting session from Firestore:", e);
+      console.error("Logout error:", e);
     }
   }
   sessionStorage.clear();
