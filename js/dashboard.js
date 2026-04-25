@@ -1541,23 +1541,24 @@ window.APP = {
   logout, clearSession
 };
 
-// SINGLE GLOBAL LOGOUT WATCHER
+// GLOBAL LOGOUT WATCHER
 (function() {
   const token = sessionStorage.getItem("uniclub_token");
   
-  // Wait a split second to ensure Firebase is initialized
+  // Wait a moment for Firebase to load
   setTimeout(() => {
     if (token && window._db && window._onSnapshot) {
       const sessionRef = window._doc(window._db, "sessions", token);
       
+      // This is a 'Live Phone Line' to the database
       window._onSnapshot(sessionRef, (snap) => {
         if (!snap.exists()) {
-          // This fires in OTHER tabs when you log out of ONE tab
-          console.log("Session invalidated globally. Redirecting...");
+          // If the ticket is gone, clear memory and redirect
+          console.log("Session invalidated. Redirecting...");
           sessionStorage.clear();
           window.location.href = "index.html";
         }
       });
     }
-  }, 1000); 
+  }, 2000); // 2 second delay to ensure the database is ready
 })();
