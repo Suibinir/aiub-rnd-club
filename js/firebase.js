@@ -88,13 +88,12 @@ export async function clearSession() {
   const token = sessionStorage.getItem("uniclub_token");
   if (token) {
     try {
-      // This part deletes the 'ticket' from the server
+      // Physically remove the session from the Firestore database
       await deleteDoc(doc(db, "sessions", token));
     } catch (e) {
-      console.error("Logout error:", e);
+      console.error("Firestore error during logout:", e);
     }
   }
-  // This clears the local memory
   sessionStorage.clear();
 }
 
