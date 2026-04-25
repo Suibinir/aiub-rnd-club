@@ -28,20 +28,6 @@ import {
   markNoticeRead, getNoticeReads
 } from "./firebase.js";
 
-// AUTO-LOGOUT WATCHER
-(function() {
-  const token = sessionStorage.getItem("uniclub_token");
-  if (token) {
-    // Listen to the session document. If it's deleted in ANY tab, this fires.
-    window._onSnapshot(window._doc(window._db, "sessions", token), (docSnap) => {
-      if (!docSnap.exists()) {
-        sessionStorage.clear();
-        window.location.href = "index.html";
-      }
-    });
-  }
-})();
-
 // ---- AUTH GUARD ----
 const currentUser = loadSession();
 if (!currentUser) { window.location.href = "index.html"; throw new Error("Not logged in"); }
@@ -1559,17 +1545,34 @@ window.APP = {
   logout, clearSession
 };
 
-// SINGLE WATCHER FOR GLOBAL LOGOUT
+// --- PUT THIS AT THE VERY BOTTOM OF dashboard.js ---
+
+// 1. The Logout Function
+async function logout() {
+  if (confirm("Log out?")) {
+    try {
+      await clearSession(); // This is the function in your firebase.js
+    } catch (e) {
+      console.log("Session already cleared");
+    }
+    window.location.href = "index.html";
+  }
+}
+
+// 2. The Global Watcher (Closes other tabs)
 (function() {
   const token = sessionStorage.getItem("uniclub_token");
   if (token && window._db && window._onSnapshot) {
     const sessionRef = window._doc(window._db, "sessions", token);
     window._onSnapshot(sessionRef, (snap) => {
       if (!snap.exists()) {
+        // If the session is deleted from the database, kick this tab out
         sessionStorage.clear();
         window.location.href = "index.html";
       }
     });
   }
 })();
-})();
+
+// 3. Add 'logout' to the APP list so the button works
+window.APP.logout = logout;
