@@ -1615,33 +1615,5 @@ setInterval(async () => {
   }
 }, 2000);
 
-// This function starts automatically when the page loads
-(function() {
-  const myToken = sessionStorage.getItem("uniclub_token");
-  const userId = sessionStorage.getItem("uniclub_user_id");
 
-  // If we are logged in, start watching the "Hotel Register"
-  if (myToken && userId) {
-    // Wait a moment for Firebase to be ready
-    setTimeout(() => {
-      if (window._db && window._onSnapshot) {
-        const userRef = window._doc(window._db, "members", userId);
-        
-        // This "Watcher" (onSnapshot) fires every time the database changes
-        window._onSnapshot(userRef, (doc) => {
-          const data = doc.data();
-          
-          // CHECK: Is the keycard in the database DIFFERENT from mine?
-          if (data && data.active_session !== myToken) {
-            alert("New login detected! Logging you out of this tab.");
-            
-            // Clear memory and kick the user back to the login page
-            sessionStorage.clear();
-            window.location.href = "index.html";
-          }
-        });
-      }
-    }, 2000);
-  }
-})();
 
