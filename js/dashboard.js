@@ -1559,20 +1559,17 @@ window.APP = {
   logout, clearSession
 };
 
-// --- SINGLE GLOBAL WATCHER ---
+// SINGLE WATCHER FOR GLOBAL LOGOUT
 (function() {
   const token = sessionStorage.getItem("uniclub_token");
-  // Only start the watcher if we have a token and the database is ready
   if (token && window._db && window._onSnapshot) {
     const sessionRef = window._doc(window._db, "sessions", token);
-    
     window._onSnapshot(sessionRef, (snap) => {
       if (!snap.exists()) {
-        // This fires when the session is deleted from Firestore in ANY tab
-        console.log("Session deleted on server. Logging out...");
         sessionStorage.clear();
         window.location.href = "index.html";
       }
     });
   }
+})();
 })();
