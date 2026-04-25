@@ -1579,3 +1579,20 @@ window.APP = {
     window.location.href = "index.html";
   }
 })();
+
+// --- GLOBAL LOGOUT WATCHER ---
+// This checks if the session still exists in the database. 
+// If you log out in Tab A, Tab B will see the document is gone and kick you out.
+(function watchSession() {
+    const token = sessionStorage.getItem("uniclub_token");
+    if (!token) return;
+
+    // Use the existing Firestore listener logic
+    window._onSnapshot(window._doc(window._db, "sessions", token), (docSnap) => {
+        if (!docSnap.exists()) {
+            console.warn("Session invalidated globally. Redirecting...");
+            sessionStorage.clear();
+            window.location.href = "index.html";
+        }
+    });
+})();
