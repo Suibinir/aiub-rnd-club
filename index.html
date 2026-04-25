@@ -23,7 +23,6 @@
         <label for="password">Password</label>
         <input type="password" id="password" placeholder="••••••••" autocomplete="current-password"/>
       </div>
-      <!-- type="button" prevents any accidental form submit / page reload -->
       <button type="button" class="btn-primary" id="loginBtn">Sign In →</button>
       <p class="demo-hint">
         Powered by <strong>PaperTown Digital</strong> <br>Use Student ID and <code>password</code> as Password to log in.
@@ -32,172 +31,98 @@
   </div>
 
   <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-    import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+    import { initializeApp }  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getFirestore, doc, getDoc, setDoc }
+      from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-    const firebaseConfig = {
+    const app = initializeApp({
       apiKey:            "AIzaSyCCEfpPzmhIbk9GIt2aYDl6R0gJ4fasfnM",
       authDomain:        "aiub-rnd-club.firebaseapp.com",
       projectId:         "aiub-rnd-club",
       storageBucket:     "aiub-rnd-club.firebasestorage.app",
       messagingSenderId: "652214407284",
       appId:             "1:652214407284:web:1d908b123525099346c121"
-    };
+    });
+    const db = getFirestore(app);
 
-    const app = initializeApp(firebaseConfig);
-    const db  = getFirestore(app);
+    // If already logged in, go straight to dashboard
+    if(sessionStorage.getItem("uniclub_token") && sessionStorage.getItem("uniclub_user")){
+      window.location.href = "dashboard.html";
+    }
 
-    // Expose to the plain script below
-    window._db     = db;
-    window._getDoc = getDoc;
-    window._setDoc = setDoc;
-    window._doc    = doc;
-    window._fbReady = true;
+    function showErr(msg){
+      const b = document.getElementById("errorMsg");
+      b.textContent = msg;
+      b.classList.add("visible");
+    }
 
-    // Already logged in? Skip straight to dashboard
-    const token = sessionStorage.getItem("uniclub_token");
-    const user  = sessionStorage.getItem("uniclub_user");
-    if(token && user) window.location.href = "dashboard.html";
-
-    // Wire up button here inside module so it's guaranteed to run after Firebase loads
     async function handleLogin(){
       const id  = document.getElementById("studentId").value.trim();
       const pw  = document.getElementById("password").value;
       const btn = document.getElementById("loginBtn");
       const err = document.getElementById("errorMsg");
-      err.classList.remove("visible"); err.textContent = "";
+
+      err.classList.remove("visible");
+      err.textContent = "";
 
       if(!id || !pw){ showErr("⚠️ Please fill in both fields."); return; }
-      btn.disabled = true; btn.textContent = "Signing in...";
+
+      btn.disabled = true;
+      btn.textContent = "Signing in...";
 
       try {
-        // Look up member in Firestore
         const snap = await getDoc(doc(db, "members", id));
+
         if(!snap.exists()){
           showErr("❌ Member not found. Check your Student ID.");
-          btn.disabled=false; btn.textContent="Sign In →"; return;
+          btn.disabled = false; btn.textContent = "Sign In →";
+          return;
         }
 
         const data = snap.data();
         if(data.password !== pw){
           showErr("❌ Wrong password. Please try again.");
-          document.getElementById("password").value="";
-          btn.disabled=false; btn.textContent="Sign In →"; return;
+          document.getElementById("password").value = "";
+          btn.disabled = false; btn.textContent = "Sign In →";
+          return;
         }
 
-        // Create server-side session token
+        // Create session keyed by uid — overwrites any previous session.
+        // This instantly kicks out any other tab already logged in as this user.
         const token = Math.random().toString(36).slice(2) + Date.now().toString(36);
         try {
-          await setDoc(doc(db,"sessions",token), { uid:id, createdAt:Date.now() });
-        } catch(sessionErr){
-          // If sessions collection isn't in Firestore rules yet, fall back gracefully
-          console.warn("Session token write failed (add /sessions rule to Firestore):", sessionErr);
+          await setDoc(doc(db, "sessions", id), { token, createdAt: Date.now() });
+        } catch(e){
+          console.warn("Session write failed — add /sessions rule to Firestore:", e.message);
         }
 
-        // Save locally and go
+        // Store locally and redirect
         sessionStorage.setItem("uniclub_token", token);
         sessionStorage.setItem("uniclub_user", JSON.stringify({
-          id, name:data.name, initials:data.initials,
-          role:data.role, dept:data.dept, email:data.email
+          id,
+          name:     data.name,
+          initials: data.initials,
+          role:     data.role,
+          dept:     data.dept,
+          email:    data.email
         }));
+
         window.location.href = "dashboard.html";
 
       } catch(e){
         console.error("Login error:", e);
         if(e.code === "permission-denied"){
-          showErr("❌ Firestore permission denied. Update your Firebase security rules.");
+          showErr("❌ Firebase permission denied. Update your Firestore security rules.");
         } else {
-          showErr("❌ Connection error. Check your internet and disable any ad blocker.");
+          showErr("❌ Connection error. Check internet / disable ad blocker.");
         }
-        btn.disabled=false; btn.textContent="Sign In →";
+        btn.disabled = false;
+        btn.textContent = "Sign In →";
       }
     }
 
-    function showErr(msg){
-      const b=document.getElementById("errorMsg");
-      b.textContent=msg; b.classList.add("visible");
-    }
-
-    // Wire button and Enter key
     document.getElementById("loginBtn").addEventListener("click", handleLogin);
-    document.addEventListener("keydown", e=>{ if(e.key==="Enter") handleLogin(); });
-  </script>
-</body>
-</html>
-
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-    import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-
-    const firebaseConfig = {
-      apiKey:            "AIzaSyCCEfpPzmhIbk9GIt2aYDl6R0gJ4fasfnM",
-      authDomain:        "aiub-rnd-club.firebaseapp.com",
-      projectId:         "aiub-rnd-club",
-      storageBucket:     "aiub-rnd-club.firebasestorage.app",
-      messagingSenderId: "652214407284",
-      appId:             "1:652214407284:web:1d908b123525099346c121"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    const db  = getFirestore(app);
-
-    window._db     = db;
-    window._getDoc = getDoc;
-    window._setDoc = setDoc;
-    window._doc    = doc;
-
-    // If already logged in AND token exists, skip to dashboard
-    const token = sessionStorage.getItem("uniclub_token");
-    const user  = sessionStorage.getItem("uniclub_user");
-    if(token && user) window.location.href = "dashboard.html";
-  </script>
-
-  <script>
-    async function handleLogin() {
-      const id  = document.getElementById("studentId").value.trim();
-      const pw  = document.getElementById("password").value;
-      const btn = document.getElementById("loginBtn");
-      document.getElementById("errorMsg").classList.remove("visible");
-
-      if(!id || !pw){ showErr("⚠️ Please fill in both fields."); return; }
-      btn.disabled = true; btn.textContent = "Signing in...";
-
-      try {
-        let attempts = 0;
-        while(!window._db && attempts < 20){ await new Promise(r=>setTimeout(r,100)); attempts++; }
-        if(!window._db){ showErr("❌ Firebase not loaded. Disable ad blocker and refresh."); btn.disabled=false; btn.textContent="Sign In →"; return; }
-
-        const snap = await window._getDoc(window._doc(window._db, "members", id));
-        if(!snap.exists()){ showErr("❌ Member not found."); btn.disabled=false; btn.textContent="Sign In →"; return; }
-
-        const data = snap.data();
-        if(data.password !== pw){ showErr("❌ Wrong password."); document.getElementById("password").value=""; btn.disabled=false; btn.textContent="Sign In →"; return; }
-
-        // Create Firestore session token
-        const token = Math.random().toString(36).slice(2) + Date.now().toString(36);
-        await window._setDoc(window._doc(window._db,"sessions",token), {
-          uid: id, createdAt: Date.now()
-        });
-
-        // Store locally
-        sessionStorage.setItem("uniclub_token", token);
-        sessionStorage.setItem("uniclub_user", JSON.stringify({
-          id, name:data.name, initials:data.initials,
-          role:data.role, dept:data.dept, email:data.email
-        }));
-        window.location.href = "dashboard.html";
-
-      } catch(e){
-        console.error("Login error:", e);
-        showErr("❌ Connection error: "+e.message+". Check internet and disable ad blocker.");
-        btn.disabled=false; btn.textContent="Sign In →";
-      }
-    }
-
-    function showErr(msg){
-      const b=document.getElementById("errorMsg"); b.textContent=msg; b.classList.add("visible");
-    }
-    document.addEventListener("keydown", e=>{ if(e.key==="Enter") handleLogin(); });
+    document.addEventListener("keydown", e => { if(e.key === "Enter") handleLogin(); });
   </script>
 </body>
 </html>
