@@ -41,16 +41,67 @@ export const storage = getStorage(app);
    /meta/streak/{memberId}      — streak arrays
    ============================================= */
 
-// ---- SESSION (still browser-side, just stores safe user info) ----
-export function saveSession(u){
+// ---- SESSION — Firestore-backed tokens ----
+// /sessions/{tokenId} = { uid, createdAt }
+// Token stored in sessionStorage locally.
+// On logout → delete from Firestore → ALL tabs instantly invalid.
+// On every dashboard load → verify token still exists in Firestore.
+
+function _makeToken(){
+  return Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+
+export async function saveSession(u){
+  const token = _makeToken();
+  // Write token to Firestore — this is the source of truth
+  await setDoc(doc(db,"sessions",token), {
+    uid:       u.id,
+    createdAt: Date.now()
+  });
+  // Store token + safe user info locally (no password ever stored)
+  sessionStorage.setItem("uniclub_token", token);
   sessionStorage.setItem("uniclub_user", JSON.stringify({
     id:u.id, name:u.name, initials:u.initials, role:u.role, dept:u.dept, email:u.email
   }));
 }
+
 export function loadSession(){
-  const r=sessionStorage.getItem("uniclub_user"); return r?JSON.parse(r):null;
+  const r = sessionStorage.getItem("uniclub_user");
+  return r ? JSON.parse(r) : null;
 }
-export function clearSession(){ sessionStorage.removeItem("uniclub_user"); }
+
+export function getSessionToken(){
+  return sessionStorage.getItem("uniclub_token");
+}
+
+// Verify token is still valid on Firestore (call on dashboard load)
+export async function verifySession(){
+  const token = getSessionToken();
+  if(!token) return false;
+  try {
+    const snap = await getDoc(doc(db,"sessions",token));
+    return snap.exists();
+  } catch(e){ return false; }
+}
+
+// Logout — delete token from Firestore so ALL tabs are invalidated
+export async function clearSession(){
+  const token = getSessionToken();
+  if(token){
+    try { await deleteDoc(doc(db,"sessions",token)); } catch(e){}
+  }
+  sessionStorage.removeItem("uniclub_token");
+  sessionStorage.removeItem("uniclub_user");
+}
+
+// Listen for session deletion in real-time (other tab logged out)
+// Returns unsubscribe function
+export function listenToSession(token, onInvalidated){
+  if(!token) return ()=>{};
+  return onSnapshot(doc(db,"sessions",token), snap => {
+    if(!snap.exists()) onInvalidated();
+  });
+}
 
 // ---- AUTH ----
 export async function findUser(id, pw){
