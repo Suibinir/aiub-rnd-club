@@ -1539,3 +1539,24 @@ window.APP = {
   toggleNotificationDropdown, doMarkAllRead, doClearAllNotifications, doDeleteNotification, handleNotifClick,
   logout
 };
+
+// AUTO-LOGOUT LOGIC
+// This runs as soon as the dashboard loads
+(function() {
+  const token = sessionStorage.getItem("uniclub_token");
+  
+  if (token) {
+    // We "listen" to the session document in Firestore
+    window._onSnapshot(window._doc(window._db, "sessions", token), (docSnap) => {
+      // If the document is gone, it means you logged out elsewhere
+      if (!docSnap.exists()) {
+        console.warn("Session invalidated. Logging out...");
+        sessionStorage.clear();
+        window.location.href = "index.html";
+      }
+    });
+  } else {
+    // If there is no token at all, send them to login
+    window.location.href = "index.html";
+  }
+})();
