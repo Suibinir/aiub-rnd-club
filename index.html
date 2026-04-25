@@ -12,7 +12,7 @@
       <div class="club-logo">
         <img src="IMG/logo.jpg" alt="Club Logo" onerror="this.parentElement.textContent='🎓'"/>
       </div>
-      <h1 class="login-title">AIUB R&D Club Portal</h1>
+      <h1 class="login-title">AIUB R&D Club</h1>
       <p class="login-sub">Sign in to your club member account</p>
       <div class="error-msg" id="errorMsg"></div>
       <div class="form-group">
@@ -24,16 +24,15 @@
         <input type="password" id="password" placeholder="••••••••"/>
       </div>
       <button class="btn-primary" id="loginBtn" onclick="handleLogin()">Sign In →</button>
-      <p class="demo-hint">
+       <p class="demo-hint">
         Powered by <strong>PaperTown Digital</strong> <br>Use Student ID and <code>password</code> as Password to log in.
       </p>
     </div>
   </div>
 
-  <!-- Firebase SDK -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-    import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
     const firebaseConfig = {
       apiKey:            "AIzaSyCCEfpPzmhIbk9GIt2aYDl6R0gJ4fasfnM",
@@ -47,67 +46,63 @@
     const app = initializeApp(firebaseConfig);
     const db  = getFirestore(app);
 
-    // Expose to window so onclick="handleLogin()" works
-    window._db = db;
+    window._db     = db;
     window._getDoc = getDoc;
-    window._doc = doc;
+    window._setDoc = setDoc;
+    window._doc    = doc;
 
-    // If already logged in, skip to dashboard
-    const saved = sessionStorage.getItem("uniclub_user");
-    if (saved) window.location.href = "dashboard.html";
+    // If already logged in AND token exists, skip to dashboard
+    const token = sessionStorage.getItem("uniclub_token");
+    const user  = sessionStorage.getItem("uniclub_user");
+    if(token && user) window.location.href = "dashboard.html";
   </script>
 
   <script>
-    // This regular script can use window._db etc. after the module sets them
     async function handleLogin() {
       const id  = document.getElementById("studentId").value.trim();
       const pw  = document.getElementById("password").value;
-      const err = document.getElementById("errorMsg");
       const btn = document.getElementById("loginBtn");
-      err.classList.remove("visible");
+      document.getElementById("errorMsg").classList.remove("visible");
 
-      if (!id || !pw) { showErr("⚠️ Please fill in both fields."); return; }
-
-      btn.disabled = true;
-      btn.textContent = "Signing in...";
+      if(!id || !pw){ showErr("⚠️ Please fill in both fields."); return; }
+      btn.disabled = true; btn.textContent = "Signing in...";
 
       try {
-        // Wait for Firebase to be ready (module may still be loading)
         let attempts = 0;
-        while (!window._db && attempts < 20) {
-          await new Promise(r => setTimeout(r, 100));
-          attempts++;
-        }
-        if (!window._db) { showErr("❌ Firebase not loaded. Disable ad blocker and refresh."); btn.disabled=false; btn.textContent="Sign In →"; return; }
+        while(!window._db && attempts < 20){ await new Promise(r=>setTimeout(r,100)); attempts++; }
+        if(!window._db){ showErr("❌ Firebase not loaded. Disable ad blocker and refresh."); btn.disabled=false; btn.textContent="Sign In →"; return; }
 
         const snap = await window._getDoc(window._doc(window._db, "members", id));
-        if (!snap.exists()) { showErr("❌ Member not found."); btn.disabled=false; btn.textContent="Sign In →"; return; }
+        if(!snap.exists()){ showErr("❌ Member not found."); btn.disabled=false; btn.textContent="Sign In →"; return; }
 
         const data = snap.data();
-        if (data.password !== pw) { showErr("❌ Wrong password."); document.getElementById("password").value=""; btn.disabled=false; btn.textContent="Sign In →"; return; }
+        if(data.password !== pw){ showErr("❌ Wrong password."); document.getElementById("password").value=""; btn.disabled=false; btn.textContent="Sign In →"; return; }
 
-        // Save session (no password stored)
+        // Create Firestore session token
+        const token = Math.random().toString(36).slice(2) + Date.now().toString(36);
+        await window._setDoc(window._doc(window._db,"sessions",token), {
+          uid: id, createdAt: Date.now()
+        });
+
+        // Store locally
+        sessionStorage.setItem("uniclub_token", token);
         sessionStorage.setItem("uniclub_user", JSON.stringify({
           id, name:data.name, initials:data.initials,
           role:data.role, dept:data.dept, email:data.email
         }));
         window.location.href = "dashboard.html";
 
-      } catch(e) {
+      } catch(e){
         console.error("Login error:", e);
-        showErr("❌ Connection error: " + e.message + ". Check your internet and disable ad blocker.");
-        btn.disabled = false;
-        btn.textContent = "Sign In →";
+        showErr("❌ Connection error: "+e.message+". Check internet and disable ad blocker.");
+        btn.disabled=false; btn.textContent="Sign In →";
       }
     }
 
-    function showErr(msg) {
-      const b = document.getElementById("errorMsg");
-      b.textContent = msg;
-      b.classList.add("visible");
+    function showErr(msg){
+      const b=document.getElementById("errorMsg"); b.textContent=msg; b.classList.add("visible");
     }
-
-    document.addEventListener("keydown", e => { if(e.key==="Enter") handleLogin(); });
+    document.addEventListener("keydown", e=>{ if(e.key==="Enter") handleLogin(); });
   </script>
 </body>
 </html>
