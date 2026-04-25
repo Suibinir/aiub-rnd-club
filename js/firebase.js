@@ -250,8 +250,12 @@ export async function getEvents(){
   return snap.docs.map(d=>({ firestoreId:d.id, ...d.data() }));
 }
 export async function createEvent(ev, callerId){
-  await verifyRole(callerId, ["admin"]);
-  const ref = await addDoc(collection(db,"events"), { ...ev, sortOrder: Date.now() });
+  await verifyRole(callerId, ["admin"]); // JS-layer fast-fail
+  const ref = await addDoc(collection(db,"events"), {
+    ...ev,
+    createdBy: callerId,  // Firestore rule reads this field
+    sortOrder: Date.now()
+  });
   return ref.id;
 }
 export async function updateEvent(firestoreId, data){
@@ -288,8 +292,12 @@ export async function getNotices(){
   return snap.docs.map(d=>({ firestoreId:d.id, ...d.data() }));
 }
 export async function addNotice(notice, callerId){
-  await verifyRole(callerId, ["admin","moderator"]);
-  const ref = await addDoc(collection(db,"notices"), { ...notice, timestamp: Date.now() });
+  await verifyRole(callerId, ["admin","moderator"]); // JS-layer fast-fail
+  const ref = await addDoc(collection(db,"notices"), {
+    ...notice,
+    authorId:  callerId,  // Firestore rule reads this field
+    timestamp: Date.now()
+  });
   return ref.id;
 }
 export async function deleteNotice(firestoreId, callerId){
@@ -412,7 +420,7 @@ export async function getMentors(){
 }
 export async function addMentor(mentor, callerId){
   await verifyRole(callerId, ["admin"]);
-  const ref = await addDoc(collection(db,"mentors"), mentor);
+  const ref = await addDoc(collection(db,"mentors"), { ...mentor, addedBy: callerId });
   return ref.id;
 }
 export async function deleteMentor(firestoreId, callerId){
@@ -428,7 +436,7 @@ export async function getExecutives(){
 }
 export async function addExecutive(exec, callerId){
   await verifyRole(callerId, ["admin"]);
-  const ref = await addDoc(collection(db,"executives"), exec);
+  const ref = await addDoc(collection(db,"executives"), { ...exec, addedBy: callerId });
   return ref.id;
 }
 export async function deleteExecutive(firestoreId, callerId){
