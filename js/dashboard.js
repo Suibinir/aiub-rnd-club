@@ -1556,7 +1556,7 @@ window.APP = {
   exportMembersCSV, triggerCSVImport, handleCSVImport, openCSVPreview, closeCSVPreview, submitCSVImport,
   openBulkAttendance, closeBulkAttendance, submitBulkAttendance, filterBulkAttendance,
   toggleNotificationDropdown, doMarkAllRead, doClearAllNotifications, doDeleteNotification, handleNotifClick,
-  logout
+  logout, clearSession
 };
 
 // --- SINGLE GLOBAL WATCHER ---
