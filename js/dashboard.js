@@ -1545,34 +1545,23 @@ window.APP = {
   logout, clearSession
 };
 
-// --- PUT THIS AT THE VERY BOTTOM OF dashboard.js ---
-
-// 1. The Logout Function
-async function logout() {
-  if (confirm("Log out?")) {
-    try {
-      await clearSession(); // This is the function in your firebase.js
-    } catch (e) {
-      console.log("Session already cleared");
-    }
-    window.location.href = "index.html";
-  }
-}
-
-// 2. The Global Watcher (Closes other tabs)
+// SINGLE GLOBAL LOGOUT WATCHER
 (function() {
   const token = sessionStorage.getItem("uniclub_token");
-  if (token && window._db && window._onSnapshot) {
-    const sessionRef = window._doc(window._db, "sessions", token);
-    window._onSnapshot(sessionRef, (snap) => {
-      if (!snap.exists()) {
-        // If the session is deleted from the database, kick this tab out
-        sessionStorage.clear();
-        window.location.href = "index.html";
-      }
-    });
-  }
+  
+  // Wait a split second to ensure Firebase is initialized
+  setTimeout(() => {
+    if (token && window._db && window._onSnapshot) {
+      const sessionRef = window._doc(window._db, "sessions", token);
+      
+      window._onSnapshot(sessionRef, (snap) => {
+        if (!snap.exists()) {
+          // This fires in OTHER tabs when you log out of ONE tab
+          console.log("Session invalidated globally. Redirecting...");
+          sessionStorage.clear();
+          window.location.href = "index.html";
+        }
+      });
+    }
+  }, 1000); 
 })();
-
-// 3. Add 'logout' to the APP list so the button works
-window.APP.logout = logout;
