@@ -1541,24 +1541,35 @@ window.APP = {
   logout, clearSession
 };
 
-// GLOBAL LOGOUT WATCHER
+// --- GLOBAL LOGOUT FORCE ---
 (function() {
   const token = sessionStorage.getItem("uniclub_token");
-  
-  // Wait a moment for Firebase to load
+  if (!token) return;
+
+  // Use a timer to wait for Firebase to be ready
   setTimeout(() => {
-    if (token && window._db && window._onSnapshot) {
+    if (window._db && window._onSnapshot) {
       const sessionRef = window._doc(window._db, "sessions", token);
       
-      // This is a 'Live Phone Line' to the database
+      // 1. Real-time Listener (Fastest)
       window._onSnapshot(sessionRef, (snap) => {
         if (!snap.exists()) {
-          // If the ticket is gone, clear memory and redirect
-          console.log("Session invalidated. Redirecting...");
-          sessionStorage.clear();
-          window.location.href = "index.html";
+          forceLogout();
         }
       });
+
+      // 2. Manual Backup (Every 2 seconds)
+      setInterval(async () => {
+        try {
+          const check = await window._getDoc(sessionRef);
+          if (!check.exists()) forceLogout();
+        } catch (e) { /* ignore network blips */ }
+      }, 2000);
     }
-  }, 2000); // 2 second delay to ensure the database is ready
+  }, 2000);
+
+  function forceLogout() {
+    sessionStorage.clear();
+    window.location.href = "index.html";
+  }
 })();
