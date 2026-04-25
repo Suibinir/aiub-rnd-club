@@ -1220,17 +1220,25 @@ function downloadFile(content,mime,filename){
   document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
 }
 
+// Inside your dashboard.js (find the logout function)
 async function logout() {
-  if (confirm("Log out?")) {
-    try {
-      // Call the function we updated in Step 1
-      await window.APP.clearSession();
-    } catch (e) {
-      console.log("Session already gone");
-    }
-    window.location.href = "index.html";
+  const token = sessionStorage.getItem("uniclub_token");
+  
+  if (token) {
+    // 1. Invalidate on the server (Firestore)
+    // This will trigger the onSnapshot listener in ALL other tabs
+    await window._deleteSession(token); 
   }
+
+  // 2. Clear local data
+  sessionStorage.clear();
+  
+  // 3. Redirect
+  window.location.href = "index.html";
 }
+
+// Ensure _deleteSession is mapped in your _fns array at the bottom of dashboard.js
+// so the UI can call it if needed, or just call it directly if imported.
 
 // =============================================
 // NOTIFICATION SYSTEM
