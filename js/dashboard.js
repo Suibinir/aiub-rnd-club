@@ -1593,3 +1593,24 @@ window.APP = {
     }, 2000);
   }
 })();
+
+// This runs in every open tab
+setInterval(async () => {
+  const token = sessionStorage.getItem("uniclub_token");
+  if (!token) return;
+
+  try {
+    if (window._db && window._getDoc) {
+      const sessionRef = window._doc(window._db, "sessions", token);
+      const snap = await window._getDoc(sessionRef);
+      
+      // If the session was deleted by another tab, kick this one out
+      if (!snap.exists()) {
+        sessionStorage.clear();
+        window.location.href = "index.html";
+      }
+    }
+  } catch (e) {
+    // Ignore errors if the network is temporarily blocked by the security wall
+  }
+}, 2000);
