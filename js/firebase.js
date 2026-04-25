@@ -97,6 +97,15 @@ export async function clearSession() {
   sessionStorage.clear();
 }
 
+// Add this to your firebase.js exports
+export async function deleteSession(token) {
+  try {
+    await deleteDoc(doc(db, "sessions", token));
+  } catch (e) {
+    console.error("Error invalidating session:", e);
+  }
+}
+
 // Listen for session deletion in real-time (other tab logged out)
 // Returns unsubscribe function
 export function listenToSession(token, onInvalidated){
