@@ -1222,16 +1222,12 @@ function downloadFile(content,mime,filename){
 
 async function logout() {
   if (confirm("Log out?")) {
-    // 1. Stop all the live listeners first
-    if (typeof unsubLeaderboard === 'function') unsubLeaderboard();
-    if (typeof unsubNotices === 'function') unsubNotices();
-    if (typeof unsubEvents === 'function') unsubEvents();
-    if (typeof unsubNotifications === 'function') unsubNotifications();
-
-    // 2. This now kills the session on the server
-    await window.APP.clearSession(); 
-
-    // 3. Move to login page
+    try {
+      // Call the function we updated in Step 1
+      await window.APP.clearSession();
+    } catch (e) {
+      console.log("Session already gone");
+    }
     window.location.href = "index.html";
   }
 }
