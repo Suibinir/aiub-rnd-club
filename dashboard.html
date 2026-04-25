@@ -256,7 +256,23 @@
       <div class="user-name" id="sidebarName">Loading...</div>
       <div class="user-role" id="sidebarRole">Member</div>
     </div>
-    <button class="logout-btn" onclick="window.APP.logout()" title="Logout">↩</button>
+    <button class="logout-btn" onclick="handleLogout()" title="Logout">↩</button>
+
+<script>
+  // Put this function inside the script tag at the bottom of dashboard.html
+  async function handleLogout() {
+    if (confirm("Log out of all tabs?")) {
+      try {
+        // 1. This kills the session on the Firebase Server
+        await window.APP.clearSession();
+      } catch (e) {
+        console.log("Session already gone");
+      }
+      // 2. Redirect this tab
+      window.location.href = "index.html";
+    }
+  }
+</script>
   </div>
 </aside>
 
