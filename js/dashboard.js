@@ -28,6 +28,20 @@ import {
   markNoticeRead, getNoticeReads
 } from "./firebase.js";
 
+// AUTO-LOGOUT WATCHER
+(function() {
+  const token = sessionStorage.getItem("uniclub_token");
+  if (token) {
+    // Listen to the session document. If it's deleted in ANY tab, this fires.
+    window._onSnapshot(window._doc(window._db, "sessions", token), (docSnap) => {
+      if (!docSnap.exists()) {
+        sessionStorage.clear();
+        window.location.href = "index.html";
+      }
+    });
+  }
+})();
+
 // ---- AUTH GUARD ----
 const currentUser = loadSession();
 if (!currentUser) { window.location.href = "index.html"; throw new Error("Not logged in"); }
