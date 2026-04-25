@@ -523,7 +523,7 @@ function renderProfileBadges(){
 function triggerProfilePicUpload(){ document.getElementById("profilePicInput").click(); }
 function handleProfilePicChange(input){
   const file=input.files[0]; if(!file) return;
-  if(file.size>2*1024*1024){ showToast("⚠️ Image too large. Max 2MB.","warn"); return; }
+  if(file.size>5*1024*1024){ showToast("⚠️ Image too large. Max 2MB.","warn"); return; }
   const reader=new FileReader();
   reader.onload=async e=>{
     try {
