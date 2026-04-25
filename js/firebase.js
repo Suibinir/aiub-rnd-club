@@ -88,14 +88,14 @@ export async function clearSession() {
   const token = sessionStorage.getItem("uniclub_token");
   if (token) {
     try {
-      // This line is what kills the session on the Firebase server
+      // This part deletes the 'ticket' from the server
       await deleteDoc(doc(db, "sessions", token));
     } catch (e) {
       console.error("Logout error:", e);
     }
   }
+  // This clears the local memory
   sessionStorage.clear();
-  sessionStorage.removeItem("uniclub_user");
 }
 
 // Listen for session deletion in real-time (other tab logged out)
