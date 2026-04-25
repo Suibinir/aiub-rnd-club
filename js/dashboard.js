@@ -1559,40 +1559,20 @@ window.APP = {
   logout
 };
 
-// AUTO-LOGOUT LOGIC
-// This runs as soon as the dashboard loads
+// --- SINGLE GLOBAL WATCHER ---
 (function() {
   const token = sessionStorage.getItem("uniclub_token");
-  
-  if (token) {
-    // We "listen" to the session document in Firestore
-    window._onSnapshot(window._doc(window._db, "sessions", token), (docSnap) => {
-      // If the document is gone, it means you logged out elsewhere
-      if (!docSnap.exists()) {
-        console.warn("Session invalidated. Logging out...");
+  // Only start the watcher if we have a token and the database is ready
+  if (token && window._db && window._onSnapshot) {
+    const sessionRef = window._doc(window._db, "sessions", token);
+    
+    window._onSnapshot(sessionRef, (snap) => {
+      if (!snap.exists()) {
+        // This fires when the session is deleted from Firestore in ANY tab
+        console.log("Session deleted on server. Logging out...");
         sessionStorage.clear();
         window.location.href = "index.html";
       }
     });
-  } else {
-    // If there is no token at all, send them to login
-    window.location.href = "index.html";
   }
-})();
-
-// --- GLOBAL LOGOUT WATCHER ---
-// This checks if the session still exists in the database. 
-// If you log out in Tab A, Tab B will see the document is gone and kick you out.
-(function watchSession() {
-    const token = sessionStorage.getItem("uniclub_token");
-    if (!token) return;
-
-    // Use the existing Firestore listener logic
-    window._onSnapshot(window._doc(window._db, "sessions", token), (docSnap) => {
-        if (!docSnap.exists()) {
-            console.warn("Session invalidated globally. Redirecting...");
-            sessionStorage.clear();
-            window.location.href = "index.html";
-        }
-    });
 })();
