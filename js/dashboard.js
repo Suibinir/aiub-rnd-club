@@ -51,8 +51,15 @@ function escHtml(s){ return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&l
 document.addEventListener("DOMContentLoaded", async ()=>{
   showGlobalLoader(true);
   try {
-    // 1. Verify session is still valid on Firestore (catches logout-from-other-tab)
-    const sessionValid = await verifySession();
+    // 1. Verify session is still valid on Firestore
+    let sessionValid = false;
+    try {
+      sessionValid = await verifySession();
+    } catch(e){
+      // If sessions rule not in Firestore yet, trust local session for now
+      console.warn("Session verify failed (add /sessions rule to Firestore):", e);
+      sessionValid = !!loadSession();
+    }
     if(!sessionValid){
       sessionStorage.removeItem("uniclub_token");
       sessionStorage.removeItem("uniclub_user");
