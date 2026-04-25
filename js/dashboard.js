@@ -4,7 +4,7 @@
    Real-time listeners for leaderboard, notices, events.
    ============================================= */
 import {
-  loadSession, clearSession, saveSession,
+  loadSession, clearSession, saveSession, verifySession, getSessionToken, listenToSession,
   db, findUser, changePassword,
   getAllMembers, addMember, removeMember,
   getStats, saveStats, addPointsToMember,
@@ -51,6 +51,24 @@ function escHtml(s){ return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&l
 document.addEventListener("DOMContentLoaded", async ()=>{
   showGlobalLoader(true);
   try {
+    // 1. Verify session is still valid on Firestore (catches logout-from-other-tab)
+    const sessionValid = await verifySession();
+    if(!sessionValid){
+      sessionStorage.removeItem("uniclub_token");
+      sessionStorage.removeItem("uniclub_user");
+      window.location.href = "index.html";
+      return;
+    }
+
+    // 2. Start real-time listener — if token is deleted (logout elsewhere), redirect immediately
+    const token = getSessionToken();
+    listenToSession(token, ()=>{
+      sessionStorage.removeItem("uniclub_token");
+      sessionStorage.removeItem("uniclub_user");
+      alert("⚠️ You have been logged out from another tab or device.");
+      window.location.href = "index.html";
+    });
+
     setupUser();
     setupDateTime();
     setupNavigation();
@@ -1197,12 +1215,12 @@ function downloadFile(content,mime,filename){
 
 async function logout(){
   if(confirm("Log out?")){
-    if(unsubLeaderboard) unsubLeaderboard();
-    if(unsubNotices) unsubNotices();
-    if(unsubEvents) unsubEvents();
-    if(unsubNotifications) unsubNotifications();
-    clearSession();
-    window.location.href="index.html";
+    if(unsubLeaderboard)    unsubLeaderboard();
+    if(unsubNotices)        unsubNotices();
+    if(unsubEvents)         unsubEvents();
+    if(unsubNotifications)  unsubNotifications();
+    await clearSession(); // deletes token from Firestore → invalidates ALL tabs
+    window.location.href = "index.html";
   }
 }
 
