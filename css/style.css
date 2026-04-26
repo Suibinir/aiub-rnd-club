@@ -200,7 +200,7 @@ body.is-admin .nav-section-label.admin-only{display:block!important;}
 .tag-general{background:var(--primary-light);color:var(--primary);}
 .tag-event{background:var(--success-light);color:var(--success);}
 .notice-title{font-size:15px;font-weight:600;color:var(--text);margin-bottom:4px;}
-.notice-body{font-size:13px;color:var(--text2);margin-bottom:6px;line-height:1.5;}
+.notice-body{font-size:13px;color:var(--text2);margin-bottom:6px;line-height:1.5;white-space:pre-wrap;word-break:break-word;}
 .notice-date{font-size:12px;color:var(--text3);}
 .btn-delete{background:none;border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px 10px;font-size:12px;color:var(--danger);cursor:pointer;}
 .btn-delete:hover{background:var(--danger-light);}
