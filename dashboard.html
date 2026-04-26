@@ -751,45 +751,5 @@ function downloadSampleCSV(){
   </main>
 </div>
 
-<script type="module" src="js/dashboard.js"></script>
-<script>
-// Bridge: all onclick handlers call through window.APP which is set by the module
-// This thin wrapper makes onclick="X()" work with ES module functions
-function _call(name, ...args) {
-  if (window.APP && window.APP[name]) {
-    window.APP[name](...args);
-  } else {
-    // Retry after a short delay if module hasn't loaded yet
-    setTimeout(() => { if (window.APP && window.APP[name]) window.APP[name](...args); }, 500);
-  }
-}
-
-// All functions called from HTML onclick attributes:
-const _fns = ["toggleSidebar","navigateTo","toggleTheme","doRegisterEvent","doDeleteEvent",
-  "openAddEventModal","closeAddEventModal","submitAddEvent","openEventAdmin","closeEventAdmin",
-  "switchEvTab","doToggleEventAtt","toggleNoticeForm","postNotice","doDeleteNotice",
-  "openChangePwModal","closeChangePwModal","submitChangePassword","triggerProfilePicUpload",
-  "handleProfilePicChange","togglePaperForm","submitPaper","doDeletePaper","handlePdfSelect",
-  "downloadPdf","toggleTeamForm","submitTeam","doJoinTeam","doDeleteTeam",
-  "openChat","closeChatModal","sendMessage","chatKeydown","doDeleteChatMsg",
-  "toggleMentorForm","submitMentor","doDeleteMentor",
-  "toggleSeminarForm","submitSeminar","doDeleteSeminar",
-  "openAddMemberModal","closeAddMemberModal","submitAddMember","doRemoveMember",
-  "exportMembersCSV","triggerCSVImport","handleCSVImport","closeCSVPreview","submitCSVImport",
-  "openBulkAttendance","closeBulkAttendance","submitBulkAttendance",
-  "toggleNotificationDropdown","doMarkAllRead","doClearAllNotifications","doDeleteNotification","handleNotifClick",
-  "logout"];
-
-_fns.forEach(fn => {
-  window[fn] = (...args) => _call(fn, ...args);
-});
-
-function downloadSampleCSV(){
-  const csv=`Name,StudentID,Password,Department,Email,Phone,Year,Role,Status\nRahim Ahmed,2025-CS-001,rahim123,CS Dept,rahim@univ.edu,01711-000001,1st Year,member,active\nSumaiya Islam,2025-EEE-002,sumaiya123,EEE Dept,sumaiya@univ.edu,01711-000002,1st Year,member,active`;
-  const blob=new Blob([csv],{type:"text/csv"}); const url=URL.createObjectURL(blob);
-  const a=document.createElement("a"); a.href=url; a.download="AIUB_RD_Import_Sample.csv";
-  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
-}
-</script>
 </body>
 </html>
