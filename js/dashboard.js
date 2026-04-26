@@ -434,6 +434,9 @@ function updateNoticeBadge(){
   const badge=document.getElementById("noticeBadge");
   if(badge && notices.length>0){ badge.textContent=Math.min(notices.length,9); badge.style.display=""; }
 }
+// Pending notice image
+let _noticeImgData = null;
+
 function renderNotices(){
   const list=document.getElementById("noticeList"); if(!list) return;
   notices.forEach(n=>{ if(n.firestoreId && !n.firestoreId.startsWith("seed")) markNoticeRead(n.firestoreId, uid, currentUser.name).catch(()=>{}); });
@@ -448,11 +451,30 @@ function renderNotices(){
           ${canDelete?`<button class="btn-delete" onclick="doDeleteNotice('${n.firestoreId}')">🗑</button>`:""}
         </div>
       </div>
+      ${n.imageData?`<img src="${n.imageData}" alt="Notice banner" class="notice-banner-img"/>`:""}
       <div class="notice-title">${escHtml(n.title)}</div>
       <div class="notice-body">${escHtml(n.body)}</div>
       <div class="notice-date">${n.date} · Posted by ${escHtml(n.author)}</div>
     </div>`;
   }).join("") || `<p style="color:var(--text3);padding:1rem 0">No notices yet.</p>`;
+}
+
+function handleNoticeImg(input){
+  const file = input.files[0]; if(!file) return;
+  if(file.size > 2*1024*1024){ showToast("⚠️ Image too large. Max 2MB.","warn"); input.value=""; return; }
+  const label   = document.getElementById("noticeImgLabel");
+  const preview = document.getElementById("noticeImgPreview");
+  const area    = document.getElementById("noticeImgArea");
+  label.textContent = "⏳ Loading image...";
+  const reader = new FileReader();
+  reader.onload = e => {
+    _noticeImgData = e.target.result;
+    label.textContent = "✅ "+file.name+" — click to change";
+    area.style.borderColor = "var(--success)";
+    preview.src = e.target.result;
+    preview.style.display = "block";
+  };
+  reader.readAsDataURL(file);
 }
 
 async function openNoticeReads(noticeId){
@@ -477,7 +499,19 @@ async function openNoticeReads(noticeId){
   } catch(e){ body.innerHTML=`<p style="color:var(--danger);">Error loading reads.</p>`; }
 }
 function closeNoticeReadsModal(){ document.getElementById("noticeReadsModal").style.display="none"; }
-function toggleNoticeForm(){ const f=document.getElementById("noticeForm"); f.classList.toggle("open"); if(f.classList.contains("open")) f.scrollIntoView({behavior:"smooth"}); }
+function toggleNoticeForm(){
+  const f=document.getElementById("noticeForm"); f.classList.toggle("open");
+  if(!f.classList.contains("open")){
+    // Reset image state when closing
+    _noticeImgData = null;
+    const lbl=document.getElementById("noticeImgLabel"); if(lbl) lbl.textContent="🖼️ Click to attach a banner image";
+    const area=document.getElementById("noticeImgArea"); if(area) area.style.borderColor="";
+    const prev=document.getElementById("noticeImgPreview"); if(prev){ prev.src=""; prev.style.display="none"; }
+    const inp=document.getElementById("noticeImgInput"); if(inp) inp.value="";
+  } else {
+    f.scrollIntoView({behavior:"smooth"});
+  }
+}
 async function postNotice(){
   if(!assertOnline()) return;
   if(!isAdmin && !isModerator){ showToast("⚠️ Only admin or moderator can post notices.","warn"); return; }
@@ -488,7 +522,7 @@ async function postNotice(){
   const btn=document.querySelector("#noticeForm .btn-primary");
   if(btn){ btn.disabled=true; btn.textContent="Posting..."; }
   try {
-    await addNotice({ tag, title, body, date:"Just now", author:currentUser.name, authorId:uid, authorRole:currentUser.role }, uid);
+    await addNotice({ tag, title, body, date:"Just now", author:currentUser.name, authorId:uid, authorRole:currentUser.role, imageData:_noticeImgData||null }, uid);
     stats.noticesPosted=(stats.noticesPosted||0)+1;
     await addPointsToMember(uid,5);
     await saveStats(uid, stats);
@@ -1645,7 +1679,7 @@ window.APP = {
   toggleSidebar, navigateTo, toggleTheme,
   doRegisterEvent, doDeleteEvent, openAddEventModal, closeAddEventModal, submitAddEvent,
   openEventAdmin, closeEventAdmin, switchEvTab, doToggleEventAtt,
-  toggleNoticeForm, postNotice, doDeleteNotice, openNoticeReads, closeNoticeReadsModal,
+  toggleNoticeForm, postNotice, doDeleteNotice, openNoticeReads, closeNoticeReadsModal, handleNoticeImg,
   openChangePwModal, closeChangePwModal, submitChangePassword,
   triggerProfilePicUpload, handleProfilePicChange,
   togglePaperForm, submitPaper, doDeletePaper, handlePdfSelect, downloadPdf,
