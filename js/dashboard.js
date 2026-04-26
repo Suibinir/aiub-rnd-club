@@ -1309,21 +1309,6 @@ function setupConnectionMonitor(){
   // Browser online/offline events
   window.addEventListener("online",  ()=>{ setReconnecting(); setTimeout(setOnline, 1500); });
   window.addEventListener("offline", setOffline);
-
-  // Periodically ping to catch cases where browser says "online" but Firebase fails
-  setInterval(async ()=>{
-    if(!navigator.onLine){ setOffline(); return; }
-    try {
-      // Lightweight Firestore check — just verify connection is alive
-      await Promise.race([
-        fetch("https://firestore.googleapis.com/", { method:"HEAD", mode:"no-cors" }),
-        new Promise((_,r)=>setTimeout(()=>r(new Error("timeout")),4000))
-      ]);
-      if(!_isOnline) setOnline();
-    } catch(e){
-      if(_isOnline) setOffline();
-    }
-  }, 8000);
 }
 
 // Show a persistent offline banner (like YouTube's "No connection")
