@@ -71,8 +71,25 @@ document.addEventListener("DOMContentLoaded", async ()=>{
     setupTheme();
     setupConnectionMonitor();
 
-    // NOTE: Session cross-tab verification disabled until /sessions Firestore rule is added
-    // To enable: add `match /sessions/{uid} { allow read, write: if true; }` to Firestore rules
+    // Cross-tab session listener — kicks out other tabs when you log in elsewhere
+    // Runs in background, never blocks dashboard load
+    try {
+      const token = getSessionToken();
+      if(token && uid){
+        listenToSession(uid, token, ()=>{
+          sessionStorage.removeItem("uniclub_token");
+          sessionStorage.removeItem("uniclub_user");
+          const banner = document.createElement("div");
+          banner.textContent = "🔒 You've been signed in from another location. Redirecting...";
+          banner.style.cssText = "position:fixed;top:0;left:0;right:0;background:#E24B4A;color:#fff;text-align:center;padding:14px;font-size:14px;font-weight:600;z-index:99999;";
+          document.body.appendChild(banner);
+          setTimeout(()=>{ window.location.href = "index.html"; }, 2000);
+        });
+      }
+    } catch(e){
+      // If session listener fails for any reason, just log it — don't crash the app
+      console.warn("Session listener error:", e.message);
+    }
 
     // Load all personal data — handle failures individually
     try {
