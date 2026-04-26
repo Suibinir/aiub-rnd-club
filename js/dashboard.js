@@ -30,10 +30,10 @@ import {
 
 // ---- AUTH GUARD ----
 const currentUser = loadSession();
-if (!currentUser) { window.location.href = "index.html"; throw new Error("Not logged in"); }
-const uid = currentUser.id;
-const isAdmin = currentUser.role === "admin";
-const isModerator = currentUser.role === "moderator";
+if (!currentUser) { window.location.href = "index.html"; }
+const uid = currentUser ? currentUser.id : "";
+const isAdmin = currentUser ? currentUser.role === "admin" : false;
+const isModerator = currentUser ? currentUser.role === "moderator" : false;
 
 // ---- APP STATE ----
 let stats = {}, attendance = [], badges = [], streak = [], notices = [], events = [], leaderboard = [];
@@ -71,26 +71,8 @@ document.addEventListener("DOMContentLoaded", async ()=>{
     setupTheme();
     setupConnectionMonitor();
 
-    // Verify session against Firestore in background — non-blocking
-    // If it fails (rule missing, offline etc.) we just skip it gracefully
-    verifySession().then(valid => {
-      if(valid === false){
-        // Only redirect if we got a definitive false (not an error)
-        const token = getSessionToken();
-        listenToSession(uid, token, ()=>{
-          sessionStorage.removeItem("uniclub_token");
-          sessionStorage.removeItem("uniclub_user");
-          const banner = document.createElement("div");
-          banner.textContent = "🔒 Signed in from another location. Redirecting...";
-          banner.style.cssText = "position:fixed;top:0;left:0;right:0;background:#E24B4A;color:#fff;text-align:center;padding:14px;font-size:14px;font-weight:600;z-index:99999;";
-          document.body.appendChild(banner);
-          setTimeout(()=>{ window.location.href = "index.html"; }, 2000);
-        });
-      }
-    }).catch(e => {
-      // Session verify failed (permission-denied, offline etc.) — keep user logged in
-      console.warn("Session verify skipped:", e.message);
-    });
+    // NOTE: Session cross-tab verification disabled until /sessions Firestore rule is added
+    // To enable: add `match /sessions/{uid} { allow read, write: if true; }` to Firestore rules
 
     // Load all personal data — handle failures individually
     try {
