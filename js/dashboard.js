@@ -50,64 +50,92 @@ function escHtml(s){ return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&l
 // =============================================
 document.addEventListener("DOMContentLoaded", async ()=>{
   showGlobalLoader(true);
+
+  // Always hide loader after max 8 seconds — no matter what
+  const loaderTimeout = setTimeout(()=>{ showGlobalLoader(false); }, 8000);
+
   try {
-    // 1. Verify this tab's token still matches Firestore (catches stale sessions)
-    let sessionValid = false;
-    try {
-      sessionValid = await verifySession();
-    } catch(e){
-      console.warn("Session verify failed:", e);
-      sessionValid = !!loadSession(); // fall back to local if Firestore rule missing
-    }
-    if(!sessionValid){
-      sessionStorage.removeItem("uniclub_token");
-      sessionStorage.removeItem("uniclub_user");
+    // Basic session check — just make sure we have local session data
+    // Don't block the whole app on Firestore session verification
+    const localUser = loadSession();
+    if(!localUser){
+      clearTimeout(loaderTimeout);
       window.location.href = "index.html";
       return;
     }
 
-    // 2. Start real-time listener — fires instantly if another login happens
-    //    or if this session is logged out from anywhere
-    const token = getSessionToken();
-    listenToSession(uid, token, ()=>{
-      sessionStorage.removeItem("uniclub_token");
-      sessionStorage.removeItem("uniclub_user");
-      // Show a non-blocking banner instead of alert (alert blocks the redirect)
-      const banner = document.createElement("div");
-      banner.textContent = "🔒 You were signed in from another location. Redirecting to login...";
-      banner.style.cssText = "position:fixed;top:0;left:0;right:0;background:#E24B4A;color:#fff;text-align:center;padding:14px;font-size:14px;font-weight:600;z-index:99999;";
-      document.body.appendChild(banner);
-      setTimeout(()=>{ window.location.href = "index.html"; }, 2000);
-    });
-
+    // Setup UI immediately — no network needed for these
     setupUser();
     setupDateTime();
     setupNavigation();
     setupTheme();
     setupConnectionMonitor();
-    // Load all data in parallel
-    [stats, attendance, badges, streak] = await Promise.all([
-      getStats(uid),
-      getAttendance(uid),
-      getBadges(uid),
-      getStreak(uid)
-    ]);
-    // Real-time listeners
-    unsubLeaderboard  = listenToLeaderboard(lb=>{ leaderboard=lb; renderLeaderboard(); refreshStats(); });
-    unsubNotices      = listenToNotices(n=>{ notices=n; renderNotices(); updateNoticeBadge(); });
-    unsubEvents       = listenToEvents(e=>{ events=e; renderEvents(); renderHomeEvents(); });
-    unsubNotifications = listenToNotifications(uid, notifs=>{ renderNotificationBell(notifs); });
+
+    // Verify session against Firestore in background — non-blocking
+    // If it fails (rule missing, offline etc.) we just skip it gracefully
+    verifySession().then(valid => {
+      if(valid === false){
+        // Only redirect if we got a definitive false (not an error)
+        const token = getSessionToken();
+        listenToSession(uid, token, ()=>{
+          sessionStorage.removeItem("uniclub_token");
+          sessionStorage.removeItem("uniclub_user");
+          const banner = document.createElement("div");
+          banner.textContent = "🔒 Signed in from another location. Redirecting...";
+          banner.style.cssText = "position:fixed;top:0;left:0;right:0;background:#E24B4A;color:#fff;text-align:center;padding:14px;font-size:14px;font-weight:600;z-index:99999;";
+          document.body.appendChild(banner);
+          setTimeout(()=>{ window.location.href = "index.html"; }, 2000);
+        });
+      }
+    }).catch(e => {
+      // Session verify failed (permission-denied, offline etc.) — keep user logged in
+      console.warn("Session verify skipped:", e.message);
+    });
+
+    // Load all personal data — handle failures individually
+    try {
+      [stats, attendance, badges, streak] = await Promise.all([
+        getStats(uid).catch(()=>getDefaultStats()),
+        getAttendance(uid).catch(()=>[]),
+        getBadges(uid).catch(()=>[]),
+        getStreak(uid).catch(()=>Array(30).fill(null))
+      ]);
+    } catch(e){
+      console.warn("Personal data load error:", e);
+      stats = getDefaultStats();
+      attendance = []; badges = []; streak = Array(30).fill(null);
+    }
+
+    // Real-time listeners — each independent, won't crash others if one fails
+    try { unsubLeaderboard = listenToLeaderboard(lb=>{ leaderboard=lb; renderLeaderboard(); refreshStats(); }); } catch(e){}
+    try { unsubNotices     = listenToNotices(n=>{ notices=n; renderNotices(); updateNoticeBadge(); }); } catch(e){}
+    try { unsubEvents      = listenToEvents(e=>{ events=e; renderEvents(); renderHomeEvents(); }); } catch(e){}
+    try { unsubNotifications = listenToNotifications(uid, notifs=>{ renderNotificationBell(notifs); }); } catch(e){}
+
+    // Render all pages
     renderHome();
     renderAttendance();
     renderProfile();
-    await renderResearch();
-    if(isAdmin) await renderAdmin();
+
+    // Research and admin load in background — don't block home page
+    renderResearch().catch(e => console.warn("Research load error:", e));
+    if(isAdmin || isModerator){
+      renderAdmin().catch(e => console.warn("Admin load error:", e));
+    }
+
   } catch(e){
     console.error("Init error:", e);
-    showToast("⚠️ Failed to load some data. Check connection.", "warn");
+    showToast("⚠️ Some data failed to load. Check your connection.", "warn");
   }
+
+  clearTimeout(loaderTimeout);
   showGlobalLoader(false);
 });
+
+// Default stats object when Firestore read fails
+function getDefaultStats(){
+  return { attendanceRate:0, eventsAttended:0, points:0, streak:0, noticesPosted:0 };
+}
 
 function showGlobalLoader(on){
   let el = document.getElementById("globalLoader");
