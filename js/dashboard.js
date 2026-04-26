@@ -461,18 +461,55 @@ function renderNotices(){
 
 function handleNoticeImg(input){
   const file = input.files[0]; if(!file) return;
-  if(file.size > 2*1024*1024){ showToast("⚠️ Image too large. Max 2MB.","warn"); input.value=""; return; }
+  if(file.size > 10*1024*1024){ showToast("⚠️ Image too large. Max 10MB.","warn"); input.value=""; return; }
   const label   = document.getElementById("noticeImgLabel");
   const preview = document.getElementById("noticeImgPreview");
   const area    = document.getElementById("noticeImgArea");
-  label.textContent = "⏳ Loading image...";
+  label.textContent = "⏳ Processing image...";
+
   const reader = new FileReader();
   reader.onload = e => {
-    _noticeImgData = e.target.result;
-    label.textContent = "✅ "+file.name+" — click to change";
-    area.style.borderColor = "var(--success)";
-    preview.src = e.target.result;
-    preview.style.display = "block";
+    const img = new Image();
+    img.onload = () => {
+      // Resize to exactly 2048x1594 using canvas
+      const TARGET_W = 2048;
+      const TARGET_H = 1594;
+      const canvas = document.createElement("canvas");
+      canvas.width  = TARGET_W;
+      canvas.height = TARGET_H;
+      const ctx = canvas.getContext("2d");
+
+      // Fill background black (for images that don't match aspect ratio)
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, TARGET_W, TARGET_H);
+
+      // Scale image to cover the canvas (centre-crop like object-fit:cover)
+      const srcRatio = img.width / img.height;
+      const dstRatio = TARGET_W / TARGET_H;
+      let drawW, drawH, drawX, drawY;
+      if(srcRatio > dstRatio){
+        // Image is wider — fit height, crop sides
+        drawH = TARGET_H;
+        drawW = img.width * (TARGET_H / img.height);
+        drawX = (TARGET_W - drawW) / 2;
+        drawY = 0;
+      } else {
+        // Image is taller — fit width, crop top/bottom
+        drawW = TARGET_W;
+        drawH = img.height * (TARGET_W / img.width);
+        drawX = 0;
+        drawY = (TARGET_H - drawH) / 2;
+      }
+      ctx.drawImage(img, drawX, drawY, drawW, drawH);
+
+      // Export as JPEG at 85% quality to keep file size reasonable
+      _noticeImgData = canvas.toDataURL("image/jpeg", 0.85);
+      label.textContent = `✅ ${file.name} → resized to 2048×1594 — click to change`;
+      area.style.borderColor = "var(--success)";
+      preview.src = _noticeImgData;
+      preview.style.display = "block";
+    };
+    img.src = e.target.result;
   };
   reader.readAsDataURL(file);
 }
