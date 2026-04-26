@@ -564,7 +564,7 @@ body.is-offline .main-content{ padding-top:calc(var(--topbar-h,60px) + 40px); }
 
 /* Notice banner image */
 .notice-banner-img{
-  width:100%;
+  width:50%;
   height:auto;
   border-radius:var(--radius-sm);
   margin:8px 0 10px;
