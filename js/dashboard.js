@@ -453,7 +453,7 @@ function renderNotices(){
       </div>
       ${n.imageData?`<img src="${n.imageData}" alt="Notice banner" class="notice-banner-img" style="object-fit:contain;background:#f8f9fa;"/>`:""}
       <div class="notice-title">${escHtml(n.title)}</div>
-      <div class="notice-body">${escHtml(n.body)}</div>
+      <div class="notice-body" style="white-space:pre-wrap;">${escHtml(n.body)}</div>
       <div class="notice-date">${n.date} · Posted by ${escHtml(n.author)}</div>
     </div>`;
   }).join("") || `<p style="color:var(--text3);padding:1rem 0">No notices yet.</p>`;
