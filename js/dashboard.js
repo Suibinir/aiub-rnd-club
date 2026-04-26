@@ -84,6 +84,7 @@ document.addEventListener("DOMContentLoaded", async ()=>{
     setupDateTime();
     setupNavigation();
     setupTheme();
+    setupConnectionMonitor();
     // Load all data in parallel
     [stats, attendance, badges, streak] = await Promise.all([
       getStats(uid),
@@ -189,6 +190,99 @@ function toggleTheme(){
   const d=document.body.classList.toggle("dark");
   document.getElementById("themeBtn").textContent=d?"☀️ Light":"🌙 Dark";
   localStorage.setItem("uniclub_theme",d?"dark":"light");
+}
+
+// =============================================
+// CONNECTION MONITOR
+// =============================================
+function setupConnectionMonitor(){
+  const banner   = document.getElementById("offlineBanner");
+  const bannerTxt= document.getElementById("offlineBannerText");
+  const dot      = document.getElementById("connDot");
+  const label    = document.getElementById("connLabel");
+  const status   = document.getElementById("connStatus");
+
+  let _offlineToastShown = false;
+  let _reconnectTimer    = null;
+
+  function setOnline(){
+    // Update dot
+    status.className = "conn-status online";
+    label.textContent = "Online";
+
+    // Hide banner (show "reconnected" briefly if we were offline)
+    if(document.body.classList.contains("is-offline")){
+      banner.classList.remove("visible");
+      banner.classList.add("reconnected");
+      bannerTxt.textContent = "✅ You're back online!";
+      banner.classList.add("visible");
+      clearTimeout(_reconnectTimer);
+      _reconnectTimer = setTimeout(()=>{
+        banner.classList.remove("visible","reconnected");
+        document.body.classList.remove("is-offline");
+      }, 2500);
+    } else {
+      banner.classList.remove("visible");
+      document.body.classList.remove("is-offline");
+    }
+
+    // Re-enable all submit buttons
+    document.querySelectorAll(".btn-primary[disabled][data-offline-disabled]").forEach(btn=>{
+      btn.disabled = false;
+      btn.removeAttribute("data-offline-disabled");
+    });
+
+    _offlineToastShown = false;
+  }
+
+  function setOffline(){
+    // Update dot
+    status.className = "conn-status offline";
+    label.textContent = "Offline";
+
+    // Show banner
+    banner.classList.remove("reconnected");
+    bannerTxt.textContent = "📡 You're offline — changes won't be saved until you reconnect.";
+    banner.classList.add("visible");
+    document.body.classList.add("is-offline");
+
+    // Disable all active submit/action buttons so users can't keep clicking
+    document.querySelectorAll(".btn-primary:not([disabled])").forEach(btn=>{
+      btn.disabled = true;
+      btn.setAttribute("data-offline-disabled","1");
+    });
+
+    // Show toast once
+    if(!_offlineToastShown){
+      showToast("📡 No internet connection detected.","warn");
+      _offlineToastShown = true;
+    }
+  }
+
+  function setReconnecting(){
+    status.className = "conn-status reconnecting";
+    label.textContent = "Reconnecting…";
+  }
+
+  // Initial state
+  if(navigator.onLine){ setOnline(); } else { setOffline(); }
+
+  // Browser online/offline events
+  window.addEventListener("online",  ()=>{ setReconnecting(); setTimeout(setOnline, 1000); });
+  window.addEventListener("offline", ()=>setOffline());
+
+  // Periodic Firestore ping every 15s to catch silent failures
+  // (browser can think it's "online" but Firebase is unreachable)
+  setInterval(async ()=>{
+    if(!navigator.onLine){ setOffline(); return; }
+    try {
+      // Lightweight read to verify actual Firestore connectivity
+      await getDoc(doc(db,"_ping","test")).catch(()=>{});
+      if(!document.body.classList.contains("is-offline")) setOnline();
+    } catch(e){
+      setReconnecting();
+    }
+  }, 15000);
 }
 
 // =============================================
@@ -331,6 +425,7 @@ async function doDeleteEvent(fid){
 function openAddEventModal(){ document.getElementById("addEventModal").style.display="flex"; document.getElementById("addEventForm").reset(); document.getElementById("addEventError").textContent=""; const t=new Date(); document.getElementById("evDay").value=String(t.getDate()).padStart(2,"0"); document.getElementById("evYear").value=t.getFullYear(); }
 function closeAddEventModal(){ document.getElementById("addEventModal").style.display="none"; }
 async function submitAddEvent(){
+  if(!assertOnline()) return;
   const v=id=>document.getElementById(id).value.trim();
   const title=v("evTitle"),venue=v("evVenue"),description=v("evDescription");
   if(!title||!venue||!description){ document.getElementById("addEventError").textContent="⚠️ Title, Venue and Description are required."; return; }
@@ -450,6 +545,7 @@ async function openNoticeReads(noticeId){
 function closeNoticeReadsModal(){ document.getElementById("noticeReadsModal").style.display="none"; }
 function toggleNoticeForm(){ const f=document.getElementById("noticeForm"); f.classList.toggle("open"); if(f.classList.contains("open")) f.scrollIntoView({behavior:"smooth"}); }
 async function postNotice(){
+  if(!assertOnline()) return;
   if(!isAdmin && !isModerator){ showToast("⚠️ Only admin or moderator can post notices.","warn"); return; }
   const title=document.getElementById("noticeTitle").value.trim();
   const tag=document.getElementById("noticeCategory").value;
@@ -670,6 +766,7 @@ function togglePaperForm(){
 }
 
 async function submitPaper(){
+  if(!assertOnline()) return;
   const v=id=>document.getElementById(id).value.trim();
   const title=v("paperTitle"),authors=v("paperAuthors");
   if(!title||!authors){ showToast("⚠️ Title and authors required","warn"); return; }
@@ -1161,6 +1258,7 @@ function filterBulkAttendance(query){
 }
 function closeBulkAttendance(){ document.getElementById("bulkAttModal").style.display="none"; }
 async function submitBulkAttendance(){
+  if(!assertOnline()) return;
   const session=document.getElementById("bulkSessionName").value.trim()||"Club Session";
   const todayStr=new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"short"});
   const selects=document.querySelectorAll(".bulk-status-select");
@@ -1236,8 +1334,109 @@ async function logout(){
 }
 
 // =============================================
-// NOTIFICATION SYSTEM
+// CONNECTION STATUS MONITOR
 // =============================================
+
+let _isOnline = navigator.onLine;
+let _offlineBannerShown = false;
+
+function setupConnectionMonitor(){
+  const status  = document.getElementById("connStatus");
+  const dot     = document.getElementById("connDot");
+  const label   = document.getElementById("connLabel");
+  if(!status) return;
+
+  function setOnline(){
+    _isOnline = true;
+    status.className = "conn-status online";
+    label.textContent = "Online";
+    if(_offlineBannerShown){
+      showToast("✅ Back online! Reconnected.", "success");
+      _offlineBannerShown = false;
+    }
+  }
+
+  function setOffline(){
+    _isOnline = false;
+    _offlineBannerShown = true;
+    status.className = "conn-status offline";
+    label.textContent = "Offline";
+    showOfflineBanner();
+  }
+
+  function setReconnecting(){
+    status.className = "conn-status reconnecting";
+    label.textContent = "Reconnecting...";
+  }
+
+  // Initial state
+  _isOnline ? setOnline() : setOffline();
+
+  // Browser online/offline events
+  window.addEventListener("online",  ()=>{ setReconnecting(); setTimeout(setOnline, 1500); });
+  window.addEventListener("offline", setOffline);
+
+  // Periodically ping to catch cases where browser says "online" but Firebase fails
+  setInterval(async ()=>{
+    if(!navigator.onLine){ setOffline(); return; }
+    try {
+      // Lightweight Firestore check — just verify connection is alive
+      await Promise.race([
+        fetch("https://firestore.googleapis.com/", { method:"HEAD", mode:"no-cors" }),
+        new Promise((_,r)=>setTimeout(()=>r(new Error("timeout")),4000))
+      ]);
+      if(!_isOnline) setOnline();
+    } catch(e){
+      if(_isOnline) setOffline();
+    }
+  }, 8000);
+}
+
+// Show a persistent offline banner (like YouTube's "No connection")
+function showOfflineBanner(){
+  // Remove existing banner if any
+  const existing = document.getElementById("offlineBanner");
+  if(existing) return; // already showing
+
+  const banner = document.createElement("div");
+  banner.id = "offlineBanner";
+  banner.innerHTML = `
+    <span>📡 No internet connection — changes won't be saved until you're back online</span>
+    <button onclick="this.parentElement.remove()" style="background:none;border:none;color:#fff;cursor:pointer;font-size:16px;padding:0 4px;line-height:1;">✕</button>
+  `;
+  banner.style.cssText = `
+    position:fixed;bottom:0;left:0;right:0;z-index:9997;
+    background:#E24B4A;color:#fff;
+    display:flex;align-items:center;justify-content:space-between;
+    padding:12px 20px;font-size:13px;font-weight:600;
+    box-shadow:0 -2px 12px rgba(0,0,0,.2);
+    animation:slideUpBanner .3s ease;
+  `;
+  if(!document.getElementById("bannerStyle")){
+    const s = document.createElement("style");
+    s.id = "bannerStyle";
+    s.textContent = "@keyframes slideUpBanner{from{transform:translateY(100%)}to{transform:translateY(0)}}";
+    document.head.appendChild(s);
+  }
+  document.body.appendChild(banner);
+
+  // Auto-remove when back online
+  const check = setInterval(()=>{
+    if(navigator.onLine){
+      banner.remove();
+      clearInterval(check);
+    }
+  }, 1000);
+}
+
+// Helper: check if offline before any write operation and warn user
+function assertOnline(){
+  if(!navigator.onLine){
+    showToast("📡 You're offline. Please check your connection and try again.", "warn");
+    return false;
+  }
+  return true;
+}
 
 // Play a soft notification beep using Web Audio API (no file needed)
 function playNotifSound(){
