@@ -562,6 +562,13 @@ body.is-offline .main-content{ padding-top:calc(var(--topbar-h,60px) + 40px); }
 .chat-send-btn:hover{background:var(--primary-dark);}
 .chat-send-btn:active{transform:scale(.93);}
 
+/* Notice banner image */
+.notice-banner-img{
+  width:100%; max-height:220px; object-fit:cover;
+  border-radius:var(--radius-sm); margin:8px 0 10px;
+  border:1px solid var(--border);
+}
+
 /* PDF UPLOAD AREA */
 .pdf-upload-area{border:2px dashed var(--border);border-radius:var(--radius-sm);padding:14px 16px;cursor:pointer;text-align:center;font-size:13px;color:var(--text2);transition:border-color .2s,background .2s;background:var(--surface2);}
 .pdf-upload-area:hover{border-color:var(--primary);background:var(--primary-light);color:var(--primary);}
