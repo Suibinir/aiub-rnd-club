@@ -139,7 +139,8 @@ export async function addMember(m, callerId){
   await verifyRole(callerId, ["admin"]);
   const existing = await getDoc(doc(db,"members",m.id));
   if(existing.exists()) return false;
-  await setDoc(doc(db,"members",m.id), m);
+  // Include createdBy so Firestore rule: isAdmin(request.resource.data.get('createdBy','')) works
+  await setDoc(doc(db,"members",m.id), { ...m, createdBy: callerId });
   await setDoc(doc(db,"leaderboard",m.id), {
     name:m.name, initials:m.initials, points:0, badges:0,
     bgColor:"#e9ecef", txtColor:"#495057"
