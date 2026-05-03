@@ -58,6 +58,7 @@
         <div class="form-group"><label>Department <span class="req">*</span></label><input type="text" id="newDept" placeholder="e.g. Computer Science"/></div>
         <div class="form-group"><label>Email <span class="req">*</span></label><input type="email" id="newEmail" placeholder="student@university.edu"/></div>
         <div class="form-group"><label>Phone</label><input type="text" id="newPhone" placeholder="01700-xxxxxx"/></div>
+        <div class="form-group"><label>Joining Date</label><input type="date" id="newJoiningDate"/></div>
         <div class="form-group"><label>Role</label>
           <select id="newRole"><option value="member">Member</option><option value="moderator">Moderator</option><option value="admin">Admin</option></select>
         </div>
@@ -243,6 +244,7 @@
     <div class="nav-item" data-page="mentors">👨‍🏫 &nbsp;Mentors</div>
     <div class="nav-item" data-page="executives">👔 &nbsp;Executive Panel</div>
     <div class="nav-section-label" style="margin-top:1.25rem;">Community</div>
+    <div class="nav-item" data-page="members">👥 &nbsp;Members List</div>
     <div class="nav-item" data-page="leaderboard">🏆 &nbsp;Leaderboard</div>
     <div class="nav-item" data-page="profile">👤 &nbsp;My Profile</div>
     <div class="nav-section-label moderator-only" style="margin-top:1.25rem;">Moderator</div>
@@ -369,7 +371,7 @@
               <span id="noticeImgLabel">🖼️ Click to attach a banner image</span>
             </div>
             <input type="file" id="noticeImgInput" accept="image/*" style="display:none" onchange="handleNoticeImg(this)"/>
-            <img id="noticeImgPreview" src="" alt="Preview" style="display:none;margin-top:8px;max-height:500px;width:100%;object-fit:contain;border-radius:var(--radius-sm);border:1px solid var(--border);"/>
+            <img id="noticeImgPreview" src="" alt="Preview" style="display:none;margin-top:8px;max-height:180px;width:100%;object-fit:cover;border-radius:var(--radius-sm);border:1px solid var(--border);"/>
           </div>
         </div>
         <div class="form-actions"><button class="btn-primary" style="width:auto;padding:10px 24px;" onclick="postNotice()">Post Notice</button><button class="btn-outline" onclick="toggleNoticeForm()">Cancel</button></div>
@@ -473,43 +475,6 @@
     </div>
   </main>
 
-  <!-- PROFILE -->
-  <main class="page" id="page-profile">
-    <div class="page-header"><h2 class="page-title">My Profile</h2><p class="page-sub">Your membership overview</p></div>
-    <div class="card">
-      <div class="profile-header">
-        <div style="position:relative;flex-shrink:0;">
-          <div class="profile-avatar" id="profileAvatarEl" style="overflow:hidden;"></div>
-          <button class="pic-upload-btn" onclick="triggerProfilePicUpload()" title="Change photo">📷</button>
-        </div>
-        <div>
-          <div class="profile-name" id="profileName">Loading...</div>
-          <div class="profile-id" id="profileDept"></div>
-          <span class="role-badge" id="profileRoleBadge">Member</span>
-          <div style="display:flex;gap:8px;margin-top:.75rem;flex-wrap:wrap;">
-            <button class="btn-outline" style="font-size:13px;padding:6px 14px;" onclick="triggerProfilePicUpload()">📷 Change Photo</button>
-            <button class="btn-outline" style="font-size:13px;padding:6px 14px;" onclick="openChangePwModal()">🔒 Change Password</button>
-          </div>
-        </div>
-      </div>
-      <div class="profile-stats">
-        <div class="profile-stat"><div class="pstat-value" id="pstatAttendance">—</div><div class="pstat-label">Attendance</div></div>
-        <div class="profile-stat"><div class="pstat-value" id="pstatEvents">—</div><div class="pstat-label">Events</div></div>
-        <div class="profile-stat"><div class="pstat-value" id="pstatPoints">—</div><div class="pstat-label">Points</div></div>
-        <div class="profile-stat"><div class="pstat-value" id="pstatRank">—</div><div class="pstat-label">Rank</div></div>
-      </div>
-    </div>
-    <div class="card"><h3 class="card-title">Member Details</h3>
-      <table class="data-table">
-        <tr><td class="detail-label">Member Since</td><td>September 2024</td></tr>
-        <tr><td class="detail-label">Department</td><td id="profileDeptFull"></td></tr>
-        <tr><td class="detail-label">Membership Valid</td><td>Until December 2026</td></tr>
-        <tr><td class="detail-label">Email</td><td id="profileEmail">—</td></tr>
-      </table>
-    </div>
-    <div class="card"><h3 class="card-title">Badges — Earn them all!</h3><div class="badge-grid" id="profileBadgeGrid"></div></div>
-  </main>
-
   <!-- MODERATOR PAGE -->
   <main class="page" id="page-moderator">
     <div class="page-header"><h2 class="page-title">🛡️ Moderator Panel</h2><p class="page-sub">Give attendance and post notices</p></div>
@@ -580,7 +545,7 @@ const _fns = ["toggleSidebar","navigateTo","toggleTheme","doRegisterEvent","doDe
   "exportMembersCSV","triggerCSVImport","handleCSVImport","closeCSVPreview","submitCSVImport",
   "openBulkAttendance","closeBulkAttendance","submitBulkAttendance","filterBulkAttendance",
   "toggleNotificationDropdown","doMarkAllRead","doClearAllNotifications","doDeleteNotification","handleNotifClick",
-  "logout"];
+  "filterMembersList","logout"];
 _fns.forEach(fn => { window[fn] = (...args) => _call(fn, ...args); });
 
 function downloadSampleCSV(){
@@ -718,13 +683,27 @@ function downloadSampleCSV(){
     </div>
     <div class="card"><h3 class="card-title">Member Details</h3>
       <table class="data-table">
-        <tr><td class="detail-label">Member Since</td><td>September 2024</td></tr>
-        <tr><td class="detail-label">Department</td><td id="profileDeptFull"></td></tr>
-        <tr><td class="detail-label">Membership Valid</td><td>Until December 2026</td></tr>
+        <tr><td class="detail-label">Student ID</td><td id="profileStudentId">—</td></tr>
+        <tr><td class="detail-label">Department</td><td id="profileDeptFull">—</td></tr>
+        <tr><td class="detail-label">Joined</td><td id="profileJoiningDate">—</td></tr>
         <tr><td class="detail-label">Email</td><td id="profileEmail">—</td></tr>
       </table>
     </div>
     <div class="card"><h3 class="card-title">Badges — Earn them all!</h3><div class="badge-grid" id="profileBadgeGrid"></div></div>
+  </main>
+
+  <!-- MEMBERS LIST -->
+  <main class="page" id="page-members">
+    <div class="page-header"><h2 class="page-title">👥 Members List</h2><p class="page-sub">Search any club member by name or Student ID</p></div>
+    <div class="card">
+      <input type="text" id="memberSearchInput" placeholder="🔍 Type a name or Student ID to search..." oninput="filterMembersList(this.value)" style="width:100%;padding:11px 16px;border:1.5px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-size:14px;outline:none;margin-bottom:1rem;box-sizing:border-box;" onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='var(--border)'"/>
+      <div style="overflow-x:auto;">
+        <table class="data-table">
+          <thead><tr><th>Name</th><th>Student ID</th><th>Department</th><th>Joined</th></tr></thead>
+          <tbody id="membersListTbody"><tr><td colspan="4" style="text-align:center;color:var(--text3);padding:2rem;">Loading...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
   </main>
 
   <!-- ADMIN -->
