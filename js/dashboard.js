@@ -5,7 +5,7 @@
    ============================================= */
 import {
   loadSession, clearSession, saveSession, verifySession, getSessionToken, listenToSession,
-  db, findUser, changePassword,
+  db, getDoc, doc, findUser, changePassword,
   getAllMembers, addMember, removeMember,
   getStats, saveStats, addPointsToMember,
   getAttendance, addAttendanceRecord,
@@ -118,6 +118,7 @@ document.addEventListener("DOMContentLoaded", async ()=>{
 
     // Research and admin load in background — don't block home page
     renderResearch().catch(e => console.warn("Research load error:", e));
+    renderMembersList().catch(e => console.warn("Members list error:", e));
     if(isAdmin || isModerator){
       renderAdmin().catch(e => console.warn("Admin load error:", e));
     }
@@ -606,13 +607,78 @@ async function renderProfile(){
   const pic = await loadProfilePic(uid);
   setAvatarEl("profileAvatarEl", pic, currentUser.initials);
   document.getElementById("profileName").textContent = currentUser.name;
-  document.getElementById("profileEmail").textContent = currentUser.email;
   document.getElementById("profileDept").textContent = currentUser.dept;
   const rb=document.getElementById("profileRoleBadge");
-  rb.textContent=isAdmin?"Admin":"Active Member";
+  rb.textContent=isAdmin?"Admin":isModerator?"Moderator":"Active Member";
   if(isAdmin) rb.classList.add("admin");
+
+  // Fetch full member doc to get joining date
+  try {
+    const snap = await getDoc(doc(db,"members",uid));
+    const data = snap.exists() ? snap.data() : {};
+    const el_id   = document.getElementById("profileStudentId");
+    const el_dept = document.getElementById("profileDeptFull");
+    const el_join = document.getElementById("profileJoiningDate");
+    const el_email= document.getElementById("profileEmail");
+    if(el_id)    el_id.textContent    = uid;
+    if(el_dept)  el_dept.textContent  = data.dept || currentUser.dept || "—";
+    if(el_email) el_email.textContent = data.email || currentUser.email || "—";
+    if(el_join){
+      if(data.joiningDate){
+        // Format date nicely: 2025-09-01 → 1 Sep 2025
+        const d = new Date(data.joiningDate);
+        el_join.textContent = d.toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"});
+      } else {
+        el_join.textContent = "—";
+      }
+    }
+  } catch(e){ console.warn("Profile fetch error:", e); }
+
   renderProfileStats();
   renderProfileBadges();
+}
+
+// ---- MEMBERS LIST ----
+let _allMembersCache = [];
+
+async function renderMembersList(){
+  const tbody = document.getElementById("membersListTbody"); if(!tbody) return;
+  try {
+    _allMembersCache = await getAllMembers();
+    displayMembersList(_allMembersCache);
+  } catch(e){
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--danger);padding:2rem;">Error loading members.</td></tr>`;
+  }
+}
+
+function displayMembersList(members){
+  const tbody = document.getElementById("membersListTbody"); if(!tbody) return;
+  if(!members.length){
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--text3);padding:2rem;">No members found.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = members.map(m=>{
+    let joinDisplay = "—";
+    if(m.joiningDate){
+      const d = new Date(m.joiningDate);
+      joinDisplay = d.toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"});
+    }
+    return `<tr>
+      <td><div style="display:flex;align-items:center;gap:8px;"><span class="mini-avatar" style="flex-shrink:0;">${escHtml(m.initials||"?")}</span><strong>${escHtml(m.name)}</strong></div></td>
+      <td style="font-size:12px;color:var(--text2);">${escHtml(m.id)}</td>
+      <td>${escHtml(m.dept||"—")}</td>
+      <td>${joinDisplay}</td>
+    </tr>`;
+  }).join("");
+}
+
+function filterMembersList(query){
+  const q = query.toLowerCase().trim();
+  if(!q){ displayMembersList(_allMembersCache); return; }
+  const filtered = _allMembersCache.filter(m =>
+    m.name.toLowerCase().includes(q) || m.id.toLowerCase().includes(q)
+  );
+  displayMembersList(filtered);
 }
 function renderProfileStats(){
   document.getElementById("pstatAttendance").textContent=(stats.attendanceRate||0)+"%";
@@ -1162,13 +1228,14 @@ function closeAddMemberModal(){ document.getElementById("addMemberModal").style.
 async function submitAddMember(){
   const v=id=>document.getElementById(id).value.trim();
   const name=v("newName"),mid=v("newId"),pwd=v("newPassword"),dept=v("newDept"),email=v("newEmail"),phone=v("newPhone"),role=v("newRole"),status=v("newStatus");
+  const joiningDate = document.getElementById("newJoiningDate").value || new Date().toISOString().slice(0,10);
   const errEl=document.getElementById("addMemberError");
   if(!name||!mid||!pwd||!dept||!email){ errEl.textContent="⚠️ Name, ID, Password, Dept and Email are required."; return; }
   if(pwd.length<6){ errEl.textContent="⚠️ Password must be at least 6 characters."; return; }
   const initials=(name.split(" ").map(w=>w[0]).join("").toUpperCase()+"??").slice(0,2);
   const btn=document.querySelector("#addMemberForm .btn-primary"); btn.disabled=true; btn.textContent="Adding...";
   try {
-    const ok=await addMember({ id:mid, password:pwd, name, initials, role, dept, email, phone, status }, uid);
+    const ok=await addMember({ id:mid, password:pwd, name, initials, role, dept, email, phone, joiningDate, status }, uid);
     if(!ok){ errEl.textContent="⚠️ A member with that ID already exists."; btn.disabled=false; btn.textContent="Add Member"; return; }
     closeAddMemberModal(); await renderAdmin();
     notifyNewMember(name);
@@ -1730,5 +1797,6 @@ window.APP = {
   exportMembersCSV, triggerCSVImport, handleCSVImport, openCSVPreview, closeCSVPreview, submitCSVImport,
   openBulkAttendance, closeBulkAttendance, submitBulkAttendance, filterBulkAttendance,
   toggleNotificationDropdown, doMarkAllRead, doClearAllNotifications, doDeleteNotification, handleNotifClick,
+  filterMembersList,
   logout
 };
