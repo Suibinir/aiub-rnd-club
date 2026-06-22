@@ -580,6 +580,7 @@ body.is-offline .main-content{ padding-top:calc(var(--topbar-h,60px) + 40px); }
 @media(max-width:1024px){.admin-actions{grid-template-columns:1fr 1fr;}}
 @media(max-width:900px){.ev-meta-grid{grid-template-columns:1fr;}#teamList,#mentorList{grid-template-columns:1fr;}}
 @media(max-width:768px){
+  /* Existing styles */
   .sidebar{position:fixed;top:0;left:0;height:100%;transform:translateX(-100%);box-shadow:4px 0 20px rgba(0,0,0,.15);}
   .sidebar.open{transform:translateX(0);}
   .menu-btn{display:block;}
@@ -592,5 +593,65 @@ body.is-offline .main-content{ padding-top:calc(var(--topbar-h,60px) + 40px); }
   .ev-card{flex-direction:column;}
   .ev-card-left{flex-direction:row;width:auto;}
   .page{padding:1rem;}
+
+  /* ==========================================
+     FIXES FOR SMUSHED & MISSING TOPBAR OPTIONS
+     ========================================== */
+  .topbar {
+    padding: 0 12px;
+    gap: 8px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* 1. Hide the long branding text on mobile to make instant space */
+  .topbar .powered-by {
+    display: none !important;
+  }
+
+  /* 2. Hide connection text label so only the colored dot remains */
+  .topbar .conn-status {
+    padding: 4px;
+    background: transparent;
+    border: none;
+  }
+  .topbar .conn-label {
+    display: none !important; 
+  }
+
+  /* 3. Keep the notification bell and theme button from shrinking */
+  .topbar-right {
+    gap: 10px;
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+  }
+
+  .notif-bell-btn, 
+  .theme-toggle {
+    flex-shrink: 0 !important;
+    min-width: unset;
+  }
+
+  /* 4. Simplify theme button size to fit comfortably */
+  .theme-toggle {
+    padding: 6px 10px;
+    font-size: 13px;
+  }
+
+  /* 5. Prevent long page titles from breaking the row */
+  .topbar-title {
+    font-size: 16px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 110px; 
+  }
 }
-@media(max-width:480px){.stats-grid{grid-template-columns:1fr 1fr;}.profile-stats{grid-template-columns:1fr 1fr;}}
+
+@media(max-width:480px){
+  .stats-grid{grid-template-columns:1fr 1fr;}
+  .profile-stats{grid-template-columns:1fr 1fr;}
+}
