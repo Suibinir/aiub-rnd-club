@@ -201,6 +201,10 @@ function setupNavigation(){
       const t=document.getElementById("page-"+page); if(t) t.classList.add("active");
       document.getElementById("topbarTitle").textContent=item.textContent.trim().replace(/\s\d+$/,"").trim();
       if(page==="notices"){ const b=document.getElementById("noticeBadge"); if(b) b.style.display="none"; }
+      // Admin panel data (pending approvals, member table, stats) is only loaded
+      // once at page load — refresh it every time an admin/moderator opens this tab
+      // so new submissions/requests show up without a full page reload.
+      if(page==="admin" && (isAdmin || isModerator)){ renderAdmin().catch(e=>console.warn("Admin refresh error:",e)); }
       document.getElementById("sidebar").classList.remove("open");
     });
   });
