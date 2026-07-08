@@ -46,7 +46,3 @@ document.addEventListener("keydown", e => { if(e.key==="Enter") handleLogin(); }
 window.handleLogin = handleLogin;
 // This connects the button to the function correctly for a Module
 document.getElementById("loginBtn").addEventListener("click", handleLogin);
-
-document.addEventListener("keydown", e => { 
-  if(e.key === "Enter") handleLogin(); 
-});
