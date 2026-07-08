@@ -359,7 +359,16 @@ export async function addPaper(paper){
   const ref = await addDoc(collection(db,"papers"), { ...paper, timestamp:Date.now() });
   return ref.id;
 }
-export async function deletePaper(firestoreId){
+export async function deletePaper(firestoreId, callerId){
+  const snap = await getDoc(doc(db,"papers",firestoreId));
+  if(snap.exists()){
+    const paper = snap.data();
+    const callerSnap = await getDoc(doc(db,"members",callerId));
+    const callerRole = callerSnap.exists() ? callerSnap.data().role : null;
+    if(callerRole !== "admin" && paper.addedById !== callerId){
+      throw new Error("permission-denied");
+    }
+  }
   await deleteDoc(doc(db,"papers",firestoreId));
 }
 
@@ -508,17 +517,32 @@ export async function saveBulkAttendance(records, callerId){
   const batch = writeBatch(db);
   for(const r of records){
     const attRef = doc(collection(db,"members",r.memberId,"attendance"));
-    batch.set(attRef, { date:r.date, session:r.session, status:r.status, note:r.note, timestamp:Date.now() });
-    // Update stats
+    // NOTE: "givenBy" is required here — the Firestore rule for attendance writes
+    // checks isModerator(givenBy). Without it every write was silently denied.
+    batch.set(attRef, {
+      date:r.date, session:r.session, status:r.status, note:r.note,
+      givenBy: callerId, timestamp:Date.now()
+    });
+
+    // Update stats — this now always runs (not just on "Present"), since
+    // attendanceRate needs the total session count regardless of status.
     const statsRef = doc(db,"stats",r.memberId);
     const statsSnap = await getDoc(statsRef);
     const mStats = statsSnap.exists() ? statsSnap.data() : getDefaultStats(r.memberId);
+
+    mStats.totalSessions = (mStats.totalSessions||0) + 1;
     if(r.status==="Present"){
-      mStats.streak = (mStats.streak||0)+1;
-      mStats.points = (mStats.points||0)+10;
-      batch.update(statsRef, { streak:mStats.streak, points:mStats.points });
+      mStats.presentSessions = (mStats.presentSessions||0) + 1;
+      mStats.streak = (mStats.streak||0) + 1;
+      mStats.points = (mStats.points||0) + 10;
       batch.update(doc(db,"leaderboard",r.memberId), { points:increment(10) });
+    } else {
+      // Late/Absent breaks the streak
+      mStats.streak = 0;
     }
+    mStats.attendanceRate = Math.round((mStats.presentSessions||0) / mStats.totalSessions * 100);
+
+    batch.set(statsRef, mStats, { merge:true });
   }
   await batch.commit();
 }
@@ -545,7 +569,7 @@ export function listenToEvents(callback){
 
 // ---- DEFAULT DATA (used for seeding) ----
 function getDefaultStats(uid){
-  return { attendanceRate:0, eventsAttended:0, points:uid==="admin"?0:0, streak:0, noticesPosted:0 };
+  return { attendanceRate:0, eventsAttended:0, points:uid==="admin"?0:0, streak:0, noticesPosted:0, totalSessions:0, presentSessions:0 };
 }
 function getDefaultBadges(){
   return [
