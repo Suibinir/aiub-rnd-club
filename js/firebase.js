@@ -239,16 +239,6 @@ export async function earnBadge(uid, badgeId){
 // ---- EVENTS (global/shared) ----
 export async function getEvents(){
   const snap = await getDocs(query(collection(db,"events"), orderBy("sortOrder","asc")));
-  if(snap.empty){
-    // Seed default events
-    const defaults = getDefaultEvents();
-    const batch = writeBatch(db);
-    defaults.forEach((ev,i)=>{
-      batch.set(doc(db,"events",String(ev.id)), { ...ev, sortOrder:i });
-    });
-    await batch.commit();
-    return defaults;
-  }
   return snap.docs.map(d=>({ firestoreId:d.id, ...d.data() }));
 }
 export async function createEvent(ev, callerId){
@@ -282,15 +272,6 @@ export async function markEventAttendee(firestoreId, memberId, attended, callerI
 // ---- NOTICES (global/shared) ----
 export async function getNotices(){
   const snap = await getDocs(query(collection(db,"notices"), orderBy("timestamp","desc")));
-  if(snap.empty){
-    const defaults = getDefaultNotices();
-    const batch = writeBatch(db);
-    defaults.forEach(n=>{
-      batch.set(doc(collection(db,"notices")), { ...n, timestamp: Date.now() });
-    });
-    await batch.commit();
-    return defaults.map((n,i)=>({ firestoreId:"seed"+i, ...n }));
-  }
   return snap.docs.map(d=>({ firestoreId:d.id, ...d.data() }));
 }
 export async function addNotice(notice, callerId){
@@ -346,13 +327,6 @@ export async function loadProfilePic(uid){
 // ---- RESEARCH — PAPERS ----
 export async function getPapers(){
   const snap = await getDocs(query(collection(db,"papers"), orderBy("timestamp","desc")));
-  if(snap.empty){
-    const defaults = getDefaultPapers();
-    const batch = writeBatch(db);
-    defaults.forEach(p=>{ batch.set(doc(collection(db,"papers")), { ...p, timestamp:Date.now() }); });
-    await batch.commit();
-    return defaults;
-  }
   return snap.docs.map(d=>({ firestoreId:d.id, ...d.data() }));
 }
 export async function addPaper(paper){
@@ -375,13 +349,6 @@ export async function deletePaper(firestoreId, callerId){
 // ---- RESEARCH — TEAMS ----
 export async function getTeams(){
   const snap = await getDocs(collection(db,"teams"));
-  if(snap.empty){
-    const defaults = getDefaultTeams();
-    const batch = writeBatch(db);
-    defaults.forEach(t=>{ batch.set(doc(collection(db,"teams")), t); });
-    await batch.commit();
-    return defaults;
-  }
   return snap.docs.map(d=>({ firestoreId:d.id, ...d.data() }));
 }
 export async function addTeam(team){
@@ -420,13 +387,6 @@ export async function resolveKickRequest(firestoreId, approved, teamId, targetId
 // ---- RESEARCH — MENTORS ----
 export async function getMentors(){
   const snap = await getDocs(collection(db,"mentors"));
-  if(snap.empty){
-    const defaults = getDefaultMentors();
-    const batch = writeBatch(db);
-    defaults.forEach(m=>{ batch.set(doc(collection(db,"mentors")), m); });
-    await batch.commit();
-    return defaults;
-  }
   return snap.docs.map(d=>({ firestoreId:d.id, ...d.data() }));
 }
 export async function addMentor(mentor, callerId){
@@ -494,13 +454,6 @@ export async function getNoticeReads(noticeId){
 // ---- RESEARCH — SEMINARS ----
 export async function getSeminars(){
   const snap = await getDocs(query(collection(db,"seminars"), orderBy("timestamp","desc")));
-  if(snap.empty){
-    const defaults = getDefaultSeminars();
-    const batch = writeBatch(db);
-    defaults.forEach(s=>{ batch.set(doc(collection(db,"seminars")), { ...s, timestamp:Date.now() }); });
-    await batch.commit();
-    return defaults;
-  }
   return snap.docs.map(d=>({ firestoreId:d.id, ...d.data() }));
 }
 export async function addSeminar(seminar){
@@ -754,4 +707,3 @@ export function listenToNotifications(userId, callback){
     callback(snap.docs.map(d => ({ id:d.id, ...d.data() })));
   });
 }
-
