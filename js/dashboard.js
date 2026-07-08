@@ -800,8 +800,22 @@ async function requestPaperUnpublish(fid,title){
   catch(e){ showToast("❌ Error","warn"); }
 }
 async function doRepublishPaper(fid){
-  try { await updatePaper(fid,{published:true}); await renderPapers(); showToast("✅ Paper re-published!"); }
-  catch(e){ showToast("❌ Error","warn"); }
+  try {
+    const papers = await getPapers();
+    const p = papers.find(x=>x.firestoreId===fid);
+    const isFirstApproval = !!(p && p.pendingReview);
+    await updatePaper(fid,{ published:true, pendingReview:false });
+    if(isFirstApproval && p){
+      await addPointsToMember(p.addedById, 10);
+      if(p.addedById===uid) stats.points=(stats.points||0)+10;
+      notifyAllPaper(p.title, p.addedBy);
+      showToast("✅ Paper approved and published! +10 pts awarded.");
+    } else {
+      showToast("✅ Paper re-published!");
+    }
+    await renderPapers();
+    await renderPendingApprovals();
+  } catch(e){ showToast("❌ Error","warn"); }
 }
 
 let _paperCache = [];
@@ -848,23 +862,21 @@ async function submitPaper(){
       tags:v("paperTags")?v("paperTags").split(",").map(t=>t.trim()).filter(Boolean):[],
       addedBy:currentUser.name, addedById:uid,
       date:new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"short"}),
-      pdfData:_pendingPdfData||null, pdfName:_pendingPdfName||null
+      pdfData:_pendingPdfData||null, pdfName:_pendingPdfName||null,
+      published:false, pendingReview:true
     });
     togglePaperForm();
     document.getElementById("paperForm").querySelectorAll("input,textarea").forEach(i=>i.value="");
     document.getElementById("paperPdfInput").value="";
     await renderPapers();
-    await addPointsToMember(uid, 10);
-    stats.points=(stats.points||0)+10;
-    notifyAllPaper(title, currentUser.name);
-    showToast("📄 Paper added! +10 pts");
+    showToast("📄 Paper submitted for admin review!");
   } catch(e){ showToast("❌ Error: "+e.message,"warn"); }
   btn.disabled=false; btn.textContent="Add to Library";
 }
 
 async function doDeletePaper(fid){
   if(!confirm("Remove this paper?")) return;
-  try { await fbDeletePaper(fid); await renderPapers(); showToast("🗑 Paper removed."); }
+  try { await fbDeletePaper(fid, uid); await renderPapers(); showToast("🗑 Paper removed."); }
   catch(e){ showToast("❌ Error removing paper","warn"); }
 }
 
@@ -1150,10 +1162,23 @@ async function renderAdmin(){
 async function renderPendingApprovals(){
   const el=document.getElementById("pendingApprovalsList"); if(!el) return;
   try {
-    const [kicks, unpubs] = await Promise.all([getKickRequests(), getUnpublishRequests()]);
-    const total = kicks.length + unpubs.length;
+    const [kicks, unpubs, papers] = await Promise.all([getKickRequests(), getUnpublishRequests(), getPapers()]);
+    const pendingPapers = papers.filter(p=>p.pendingReview===true);
+    const total = kicks.length + unpubs.length + pendingPapers.length;
     if(!total){ el.innerHTML=`<p style="color:var(--text3);font-size:14px;">No pending approvals. ✅</p>`; return; }
     el.innerHTML=[
+      ...pendingPapers.map(p=>`
+        <div class="approval-item">
+          <div class="approval-icon">📄</div>
+          <div class="approval-body">
+            <div class="approval-title">New Paper Submission</div>
+            <div class="approval-desc"><strong>${escHtml(p.addedBy)}</strong> submitted: <strong>${escHtml(p.title)}</strong></div>
+          </div>
+          <div class="approval-actions">
+            <button class="btn-approve" onclick="doRepublishPaper('${p.firestoreId}')">✅ Approve</button>
+            <button class="btn-deny" onclick="doDenyPaper('${p.firestoreId}')">❌ Deny</button>
+          </div>
+        </div>`),
       ...kicks.map(k=>`
         <div class="approval-item">
           <div class="approval-icon">👢</div>
@@ -1180,6 +1205,17 @@ async function renderPendingApprovals(){
         </div>`)
     ].join("");
   } catch(e){ el.innerHTML=`<p style="color:var(--danger);font-size:14px;">Error loading approvals.</p>`; }
+}
+
+// Deny a pending paper submission — removes it entirely (submitter can resubmit)
+async function doDenyPaper(fid){
+  if(!confirm("Deny and remove this paper submission?")) return;
+  try {
+    await fbDeletePaper(fid, uid);
+    await renderPendingApprovals();
+    await renderPapers();
+    showToast("❌ Paper submission denied");
+  } catch(e){ showToast("❌ Error: "+e.message,"warn"); }
 }
 
 async function resolveApproval(type, reqId, approved, extra1, extra2){
@@ -1787,7 +1823,7 @@ window.APP = {
   openChangePwModal, closeChangePwModal, submitChangePassword,
   triggerProfilePicUpload, handleProfilePicChange,
   togglePaperForm, submitPaper, doDeletePaper, handlePdfSelect, downloadPdf,
-  openEditPaper, closeEditPaperModal, submitEditPaper, requestPaperUnpublish, doRepublishPaper,
+  openEditPaper, closeEditPaperModal, submitEditPaper, requestPaperUnpublish, doRepublishPaper, doDenyPaper,
   toggleTeamForm, submitTeam, doJoinTeam, doDeleteTeam,
   openEditTeam, closeEditTeamModal, submitEditTeam, requestKickMember,
   openChat, closeChatModal, sendMessage, chatKeydown, doDeleteChatMsg,
